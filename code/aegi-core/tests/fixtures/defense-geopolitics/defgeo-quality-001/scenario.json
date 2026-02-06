@@ -1,0 +1,103 @@
+{
+  "description": "Complete input, normal quality scoring – multiple independent sources, good coverage",
+  "judgment": {
+    "uid": "jdg-quality-001",
+    "case_uid": "case-quality-001",
+    "title": "Country Alpha military exercise assessment",
+    "assertion_uids": ["as-q001-a", "as-q001-b", "as-q001-c"]
+  },
+  "source_claims": [
+    {
+      "uid": "sc-q001-a",
+      "case_uid": "case-quality-001",
+      "artifact_version_uid": "av-001",
+      "chunk_uid": "ch-001",
+      "evidence_uid": "ev-001",
+      "quote": "Country Alpha confirmed deployment of naval assets to the Strait region.",
+      "attributed_to": "Ministry of Defense Alpha",
+      "language": "en",
+      "created_at": "2026-02-01T10:00:00Z"
+    },
+    {
+      "uid": "sc-q001-b",
+      "case_uid": "case-quality-001",
+      "artifact_version_uid": "av-002",
+      "chunk_uid": "ch-002",
+      "evidence_uid": "ev-002",
+      "quote": "Satellite imagery verified increased military activity near the Strait.",
+      "attributed_to": "Independent Satellite Agency",
+      "language": "en",
+      "created_at": "2026-02-02T08:00:00Z"
+    },
+    {
+      "uid": "sc-q001-c",
+      "case_uid": "case-quality-001",
+      "artifact_version_uid": "av-003",
+      "chunk_uid": "ch-003",
+      "evidence_uid": "ev-003",
+      "quote": "Diplomatic sources affirmed that exercises are scheduled for next month.",
+      "attributed_to": "Diplomatic Corps Beta",
+      "language": "en",
+      "created_at": "2026-02-03T14:00:00Z"
+    }
+  ],
+  "assertions": [
+    {
+      "uid": "as-q001-a",
+      "case_uid": "case-quality-001",
+      "kind": "event",
+      "value": {"description": "Naval deployment confirmed by Country Alpha"},
+      "source_claim_uids": ["sc-q001-a", "sc-q001-b"],
+      "confidence": 0.9,
+      "created_at": "2026-02-01T12:00:00Z"
+    },
+    {
+      "uid": "as-q001-b",
+      "case_uid": "case-quality-001",
+      "kind": "event",
+      "value": {"description": "Satellite verified military buildup"},
+      "source_claim_uids": ["sc-q001-b", "sc-q001-c"],
+      "confidence": 0.85,
+      "created_at": "2026-02-02T10:00:00Z"
+    },
+    {
+      "uid": "as-q001-c",
+      "case_uid": "case-quality-001",
+      "kind": "event",
+      "value": {"description": "Diplomatic sources affirmed exercise schedule"},
+      "source_claim_uids": ["sc-q001-a", "sc-q001-c"],
+      "confidence": 0.8,
+      "created_at": "2026-02-03T16:00:00Z"
+    }
+  ],
+  "hypotheses": [
+    {
+      "uid": "hyp-q001-a",
+      "case_uid": "case-quality-001",
+      "label": "Country Alpha is preparing a military exercise near the Strait",
+      "supporting_assertion_uids": ["as-q001-a", "as-q001-b", "as-q001-c"],
+      "confidence": 0.85,
+      "created_at": "2026-02-03T18:00:00Z"
+    }
+  ],
+  "narratives": [
+    {
+      "uid": "nar-q001-a",
+      "case_uid": "case-quality-001",
+      "title": "Country Alpha naval exercise preparation",
+      "assertion_uids": ["as-q001-a", "as-q001-b"],
+      "hypothesis_uids": ["hyp-q001-a"],
+      "created_at": "2026-02-03T20:00:00Z"
+    }
+  ],
+  "forecasts": [
+    {"uid": "fc-q001-a", "label": "Exercise proceeds as planned", "probability": 0.8}
+  ],
+  "expected": {
+    "status": "complete",
+    "confidence_score_gte": 0.5,
+    "bias_flag_count": 1,
+    "blindspot_count": 0,
+    "evidence_diversity_gte": 2
+  }
+}
