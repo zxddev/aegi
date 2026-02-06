@@ -1,0 +1,26 @@
+{
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_claim_001_0001",
+      "quote": "Exampleland confirmed deployment of naval assets to the Strait of Example on 2025-01-15.",
+      "selectors": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Exampleland confirmed deployment of naval assets to the Strait of Example on 2025-01-15."
+        }
+      ],
+      "attributed_to": "Exampleland"
+    },
+    {
+      "source_claim_uid": "sc_claim_001_0002",
+      "quote": "Neighborstan expressed concern over the increased military presence near its territorial waters.",
+      "selectors": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Neighborstan expressed concern over the increased military presence near its territorial waters."
+        }
+      ],
+      "attributed_to": "Neighborstan"
+    }
+  ]
+}
