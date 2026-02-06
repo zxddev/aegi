@@ -48,7 +48,10 @@ class SourceClaim(Base):
     modality: Mapped[str | None] = mapped_column(sa.String(32))
     segment_ref: Mapped[str | None] = mapped_column(sa.String(128))
     media_time_range: Mapped[dict | None] = mapped_column(JSONB)
-
+    language: Mapped[str | None] = mapped_column(sa.String(16))
+    original_quote: Mapped[str | None] = mapped_column(sa.Text())
+    translation: Mapped[str | None] = mapped_column(sa.Text())
+    translation_meta: Mapped[dict | None] = mapped_column(JSONB)
 
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False
