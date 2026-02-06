@@ -44,6 +44,10 @@ class SourceClaimV1(BaseModel):
     modality: Optional[Modality] = None
     segment_ref: Optional[str] = None
     media_time_range: Optional[MediaTimeRange] = None
+    language: Optional[str] = None
+    original_quote: Optional[str] = None
+    translation: Optional[str] = None
+    translation_meta: Optional[dict] = None
     created_at: datetime
 
 
