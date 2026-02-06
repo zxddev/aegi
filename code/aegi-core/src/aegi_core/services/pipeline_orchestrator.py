@@ -11,6 +11,7 @@ Evidence:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from time import monotonic_ns
 from typing import Any
@@ -596,8 +597,6 @@ class PipelineOrchestrator:
 
 
 def _ach_to_hypothesis(ach: hypothesis_engine.ACHResult, case_uid: str) -> HypothesisV1:
-    from datetime import datetime, timezone
-
     return HypothesisV1(
         uid=uuid.uuid4().hex,
         case_uid=case_uid,
