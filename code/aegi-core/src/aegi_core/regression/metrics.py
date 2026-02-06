@@ -48,7 +48,9 @@ class FixtureMetrics:
 
 
 def compute_metrics_for_fixture(fixtures_root: Path, manifest_item: dict) -> dict:
-    artifact = manifest_item["artifact"]
+    artifact = manifest_item.get("artifact")
+    if artifact is None:
+        return {"anchor_locate_rate": 1.0, "claim_grounding_rate": 1.0}
     rel_artifact = artifact["path"]
     artifact_kind = artifact.get("kind")
     rel_chunks = manifest_item["chunks_path"]

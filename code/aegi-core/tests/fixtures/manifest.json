@@ -30,21 +30,23 @@
       "assertions_path": "defense-geopolitics/defgeo-002/assertions.json"
     },
     {
-      "fixture_id": "defgeo-chat-001",
+      "fixture_id": "defgeo-claim-001",
       "domain": "defense-geopolitics",
-      "scenario_type": "chat_answerable",
-      "aliases": ["defgeo-defense-geopolitics-chat-answerable-001"],
-      "chat_scenario_path": "defense-geopolitics/defgeo-chat-001/chat_scenario.json"
+      "scenario_type": "claim_extraction",
+      "aliases": ["defgeo-defense-geopolitics-claim-001"],
+      "chunks_path": "defense-geopolitics/defgeo-claim-001/chunks.json",
+      "source_claims_path": "defense-geopolitics/defgeo-claim-001/source_claims.json",
+      "assertions_path": "defense-geopolitics/defgeo-claim-001/assertions.json"
     },
     {
-      "fixture_id": "defgeo-chat-002",
+      "fixture_id": "defgeo-claim-002",
       "domain": "defense-geopolitics",
-      "scenario_type": "chat_unanswerable",
-      "aliases": ["defgeo-defense-geopolitics-chat-unanswerable-002"],
-      "chat_scenario_path": "defense-geopolitics/defgeo-chat-002/chat_scenario.json"
-    }
-  ],
-  "chat_fixtures": [
+      "scenario_type": "claim_conflict",
+      "aliases": ["defgeo-defense-geopolitics-claim-conflict-002"],
+      "chunks_path": "defense-geopolitics/defgeo-claim-002/chunks.json",
+      "source_claims_path": "defense-geopolitics/defgeo-claim-002/source_claims.json",
+      "assertions_path": "defense-geopolitics/defgeo-claim-002/assertions.json"
+    },
     {
       "fixture_id": "defgeo-chat-001",
       "domain": "defense-geopolitics",
