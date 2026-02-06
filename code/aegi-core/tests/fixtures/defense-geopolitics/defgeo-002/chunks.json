@@ -1,0 +1,13 @@
+{
+  "chunks": [
+    {
+      "chunk_uid": "chunk_defgeo_002_0001",
+      "anchor_set": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Exampleland announced that it will conduct a maritime exercise near the Strait of Example."
+        }
+      ]
+    }
+  ]
+}

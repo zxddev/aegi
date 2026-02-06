@@ -1,0 +1,14 @@
+retention_policy:
+  defaults:
+    # 默认任务保留（天）
+    task_retention_days: 30
+    # 类型级保留（天）
+    artifact_retention_days: 30
+    chunk_retention_days: 30
+    evidence_retention_days: 30
+    # 软删除后到物理删除的宽限期（天）
+    hard_delete_grace_days: 7
+
+  # 项目级覆盖（可选）
+  projects: {}
+

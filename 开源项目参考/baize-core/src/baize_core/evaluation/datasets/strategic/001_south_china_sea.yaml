@@ -1,0 +1,71 @@
+case_id: strategic_001
+name: 南海局势演变分析
+description: 分析近期南海地区的战略态势演变，包括主要参与方、关键事件和潜在冲突点
+task_type: strategic_situation
+query: 分析近期南海局势演变及主要参与方的战略意图
+
+expected_entities:
+  - name: 南海舰队
+    entity_type: Unit
+    aliases: [南部战区海军]
+    required: true
+  - name: 美国第七舰队
+    entity_type: Unit
+    aliases: [第七舰队, 7th Fleet]
+    required: true
+  - name: 中国
+    entity_type: Actor
+    aliases: [中华人民共和国, PRC]
+    required: true
+  - name: 美国
+    entity_type: Actor
+    aliases: [美利坚合众国, USA]
+    required: true
+  - name: 菲律宾
+    entity_type: Actor
+    aliases: [菲]
+    required: false
+
+expected_events:
+  - event_type: Deployment
+    description: 舰艇部署或调动
+    participants: [南海舰队]
+    required: true
+  - event_type: Exercise
+    description: 海上演习
+    participants: []
+    required: false
+
+expected_locations:
+  - name: 南海
+    country: null
+    latitude: 15.0
+    longitude: 115.0
+    tolerance_km: 500
+  - name: 南沙群岛
+    country: null
+    latitude: 10.0
+    longitude: 115.0
+    tolerance_km: 200
+
+expected_sources:
+  - domain: reuters.com
+    required: false
+  - domain: scmp.com
+    required: false
+
+min_sources: 5
+min_citations: 5
+max_conflict_rate: 0.3
+timeout_minutes: 30
+
+constraints:
+  - 仅使用公开来源
+  - 关注近期事件
+
+time_window: 最近6个月
+region: 南海地区
+
+tags: [海上安全, 地缘政治, 东南亚]
+difficulty: medium
+notes: 核心战略态势评测用例

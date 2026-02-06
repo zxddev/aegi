@@ -1,0 +1,36 @@
+{
+  "tools": {
+    "meta_search": {
+      "url": "http://192.168.31.50:8601/search",
+      "method": "GET",
+      "adapter": "searxng",
+      "description": "元搜索聚合，返回结果+摘要+候选URL",
+      "risk_level": "low",
+      "timeout_ms": 30000
+    },
+    "doc_parse": {
+      "url": "http://192.168.31.50:8603/general/v0/general",
+      "method": "POST",
+      "adapter": "unstructured",
+      "description": "解析PDF/Office/HTML，生成Chunk并保留表格结构",
+      "risk_level": "low",
+      "timeout_ms": 60000
+    },
+    "web_crawl": {
+      "url": "http://192.168.31.50:8605/v1/scrape",
+      "method": "POST",
+      "adapter": "firecrawl",
+      "description": "深度抓取网页/站点，产出Markdown/结构化数据",
+      "risk_level": "medium",
+      "timeout_ms": 60000
+    },
+    "archive_url": {
+      "url": "http://192.168.31.50:8602",
+      "method": "POST",
+      "adapter": "archivebox",
+      "description": "归档固化，生成可回放Artifact",
+      "risk_level": "low",
+      "timeout_ms": 120000
+    }
+  }
+}

@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+wheels/
+*.manifest
+*.spec
+
+# 虚拟环境
+.venv/
+venv/
+ENV/
+
+# 环境配置
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 测试与覆盖率
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+
+# 依赖锁文件（uv 管理）
+uv.lock
+
+# 运行时产物
+eval_checkpoints/
+*.log
+logs/
+
+# 数据库
+*.db
+*.sqlite3
+
+# 临时文件
+tmp/
+temp/
+*.tmp

@@ -1,0 +1,102 @@
+# OpenMetadata 部署配置
+# 用于元数据目录和数据血缘
+
+version: "3.9"
+
+services:
+  openmetadata-mysql:
+    image: mysql:8
+    container_name: openmetadata-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-openmetadata_password}
+      MYSQL_DATABASE: openmetadata_db
+      MYSQL_USER: openmetadata_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-openmetadata_password}
+    volumes:
+      - openmetadata-mysql-data:/var/lib/mysql
+    networks:
+      - openmetadata-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  openmetadata-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.3
+    container_name: openmetadata-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    volumes:
+      - openmetadata-es-data:/usr/share/elasticsearch/data
+    networks:
+      - openmetadata-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  openmetadata-server:
+    image: docker.io/openmetadata/server:1.3.1
+    container_name: openmetadata-server
+    restart: unless-stopped
+    environment:
+      # 数据库配置
+      DB_DRIVER_CLASS: com.mysql.cj.jdbc.Driver
+      DB_SCHEME: mysql
+      DB_HOST: openmetadata-mysql
+      DB_PORT: 3306
+      DB_USE_SSL: "false"
+      DB_USER: openmetadata_user
+      DB_USER_PASSWORD: ${MYSQL_PASSWORD:-openmetadata_password}
+      OM_DATABASE: openmetadata_db
+      # Elasticsearch 配置
+      ELASTICSEARCH_HOST: openmetadata-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEME: http
+      # 认证配置
+      AUTHENTICATION_PROVIDER: basic
+      AUTHENTICATION_PUBLIC_KEY_URLS: "[http://openmetadata-server:8585/api/v1/config/jwks]"
+      # Airflow 配置（可选）
+      AIRFLOW_HOST: ""
+    depends_on:
+      openmetadata-mysql:
+        condition: service_healthy
+      openmetadata-elasticsearch:
+        condition: service_healthy
+    ports:
+      - "8585:8585"
+    networks:
+      - openmetadata-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8585/api/v1/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  openmetadata-ingestion:
+    image: docker.io/openmetadata/ingestion:1.3.1
+    container_name: openmetadata-ingestion
+    restart: unless-stopped
+    depends_on:
+      openmetadata-server:
+        condition: service_healthy
+    environment:
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    networks:
+      - openmetadata-network
+
+networks:
+  openmetadata-network:
+    driver: bridge
+
+volumes:
+  openmetadata-mysql-data:
+  openmetadata-es-data:

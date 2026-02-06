@@ -1,0 +1,52 @@
+case_id: strategic_002
+name: 台海局势评估
+description: 评估台湾海峡地区的安全态势和各方立场
+task_type: strategic_situation
+query: 分析台海地区安全形势及各方战略态势
+
+expected_entities:
+  - name: 东部战区
+    entity_type: Unit
+    aliases: [东部战区司令部]
+    required: true
+  - name: 台湾
+    entity_type: Actor
+    aliases: [台, 中华民国]
+    required: true
+  - name: 中国
+    entity_type: Actor
+    aliases: [中华人民共和国, 大陆]
+    required: true
+
+expected_events:
+  - event_type: Exercise
+    description: 军事演习或演训
+    participants: [东部战区]
+    required: true
+  - event_type: Diplomatic
+    description: 外交活动或声明
+    participants: []
+    required: false
+
+expected_locations:
+  - name: 台湾海峡
+    country: null
+    latitude: 24.5
+    longitude: 119.5
+    tolerance_km: 100
+
+min_sources: 5
+min_citations: 4
+max_conflict_rate: 0.25
+timeout_minutes: 30
+
+constraints:
+  - 仅使用公开来源
+  - 保持中立客观
+
+time_window: 最近3个月
+region: 台湾海峡
+
+tags: [地缘政治, 两岸关系, 安全形势]
+difficulty: hard
+notes: 高敏感度评测用例，注意信息来源多样性

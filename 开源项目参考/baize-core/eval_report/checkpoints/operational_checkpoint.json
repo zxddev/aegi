@@ -1,0 +1,68 @@
+{
+  "suite_name": "operational",
+  "total_cases": 5,
+  "completed_cases": 5,
+  "case_results": [
+    {
+      "case_id": "operational_001",
+      "success": true,
+      "error_message": null,
+      "elapsed_seconds": 0.0,
+      "report_uid": null,
+      "metrics": {},
+      "evidence_count": 0,
+      "source_count": 0,
+      "entity_count": 0,
+      "event_count": 0
+    },
+    {
+      "case_id": "operational_002",
+      "success": true,
+      "error_message": null,
+      "elapsed_seconds": 0.0,
+      "report_uid": null,
+      "metrics": {},
+      "evidence_count": 0,
+      "source_count": 0,
+      "entity_count": 0,
+      "event_count": 0
+    },
+    {
+      "case_id": "operational_003",
+      "success": true,
+      "error_message": null,
+      "elapsed_seconds": 0.0,
+      "report_uid": null,
+      "metrics": {},
+      "evidence_count": 0,
+      "source_count": 0,
+      "entity_count": 0,
+      "event_count": 0
+    },
+    {
+      "case_id": "operational_004",
+      "success": true,
+      "error_message": null,
+      "elapsed_seconds": 0.0,
+      "report_uid": null,
+      "metrics": {},
+      "evidence_count": 0,
+      "source_count": 0,
+      "entity_count": 0,
+      "event_count": 0
+    },
+    {
+      "case_id": "operational_005",
+      "success": true,
+      "error_message": null,
+      "elapsed_seconds": 0.0,
+      "report_uid": null,
+      "metrics": {},
+      "evidence_count": 0,
+      "source_count": 0,
+      "entity_count": 0,
+      "event_count": 0
+    }
+  ],
+  "saved_at": "2026-01-29T11:36:34.561543+00:00"
+}

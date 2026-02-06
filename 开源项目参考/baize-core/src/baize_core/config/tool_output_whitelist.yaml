@@ -1,0 +1,60 @@
+tool_output_whitelist:
+  meta_search:
+    fields: ["results"]
+    nested:
+      results:
+        item_fields: ["url", "title", "snippet", "source", "published_at", "score"]
+        max_length:
+          title: 200
+          snippet: 500
+
+  web_crawl:
+    fields: ["artifact"]
+    nested:
+      artifact:
+        fields:
+          [
+            "artifact_uid",
+            "source_url",
+            "fetched_at",
+            "content_sha256",
+            "mime_type",
+            "storage_ref",
+            "origin_tool",
+            "fetch_trace_id",
+            "license_note",
+          ]
+        max_length:
+          source_url: 500
+          storage_ref: 500
+
+  archive_url:
+    fields: ["artifact"]
+    nested:
+      artifact:
+        fields:
+          [
+            "artifact_uid",
+            "source_url",
+            "fetched_at",
+            "content_sha256",
+            "mime_type",
+            "storage_ref",
+            "origin_tool",
+            "fetch_trace_id",
+            "license_note",
+          ]
+        max_length:
+          source_url: 500
+          storage_ref: 500
+
+  doc_parse:
+    fields: ["chunks"]
+    nested:
+      chunks:
+        item_fields: ["chunk_uid", "artifact_uid", "anchor", "text", "text_sha256"]
+        max_length:
+          text: 2000
+        nested:
+          anchor:
+            fields: ["type", "ref"]

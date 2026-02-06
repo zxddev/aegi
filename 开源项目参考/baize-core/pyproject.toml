@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baize-core"
+version = "0.1.0"
+description = "白泽态势感知核心引擎 - 防务 OSINT 深度研究后端"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.111",
+  "langgraph>=0.2.46",
+  "litellm>=1.40",
+  "pydantic>=2.6",
+  "pyyaml",
+  "sqlalchemy>=2.0",
+  "geoalchemy2>=0.15",
+  "asyncpg>=0.29",
+  "alembic>=1.13",
+  "minio>=7.2",
+  "httpx>=0.27",
+  "typer>=0.12",
+  "anyio>=4.0",
+  "uvicorn>=0.30",
+  "outlines>=0.1.0",
+  "opensearch-py>=2.4",
+  "qdrant-client>=1.9",
+  "aiohttp>=3.9",
+  # Phase 2: 数据治理
+  "aiokafka>=0.10",
+  "clickhouse-connect>=0.7",
+  # Phase 5: 可观测性
+  "opentelemetry-api>=1.20",
+  "opentelemetry-sdk>=1.20",
+  "opentelemetry-exporter-otlp>=1.20",
+  "opentelemetry-instrumentation-fastapi>=0.41b0",
+  "prometheus-client>=0.19",
+  # Phase 1: Z3 约束校验
+  "z3-solver>=4.12",
+]
+
+[project.scripts]
+baize-core = "baize_core.cli:app"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "pre-commit>=3.7",
+  "types-PyYAML",
+  "types-python-dateutil",
+]
+full = [
+  "deepagents>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["baize_core*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+# line-length 已在 [tool.ruff] 顶层配置
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+ignore_missing_imports = true
+strict_optional = true
+no_implicit_optional = true
+check_untyped_defs = false
+disallow_untyped_defs = false

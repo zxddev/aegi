@@ -1,0 +1,57 @@
+case_id: operational_003
+name: 军事基地活动分析
+description: 分析特定军事基地的活动迹象和设施变化
+task_type: operational_action
+query: 分析南海岛礁军事设施建设与活动迹象
+
+expected_entities:
+  - name: 永暑礁
+    entity_type: Facility
+    aliases: [Fiery Cross Reef]
+    required: true
+  - name: 渚碧礁
+    entity_type: Facility
+    aliases: [Subi Reef]
+    required: false
+  - name: 美济礁
+    entity_type: Facility
+    aliases: [Mischief Reef]
+    required: false
+
+expected_events:
+  - event_type: FacilityActivity
+    description: 设施建设或扩建
+    participants: []
+    required: true
+  - event_type: Deployment
+    description: 装备或人员部署
+    participants: []
+    required: false
+
+expected_locations:
+  - name: 永暑礁
+    country: null
+    latitude: 9.55
+    longitude: 112.9
+    tolerance_km: 10
+  - name: 南沙群岛
+    country: null
+    latitude: 10.0
+    longitude: 115.0
+    tolerance_km: 300
+
+min_sources: 4
+min_citations: 4
+max_conflict_rate: 0.35
+timeout_minutes: 30
+
+constraints:
+  - 关注公开卫星图像分析
+  - 追踪设施变化
+
+time_window: 最近12个月
+region: 南沙群岛
+
+tags: [岛礁建设, 设施分析, 卫星图像]
+difficulty: hard
+notes: 需要时序分析能力

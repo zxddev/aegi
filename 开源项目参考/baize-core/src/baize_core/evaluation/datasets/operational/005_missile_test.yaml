@@ -1,0 +1,63 @@
+case_id: operational_005
+name: 导弹试验行动分析
+description: 分析某次导弹试验的技术参数和战略意义
+task_type: operational_action
+query: 分析朝鲜近期弹道导弹试验的技术特点与能力评估
+
+expected_entities:
+  - name: 朝鲜
+    entity_type: Actor
+    aliases: [DPRK, 北朝鲜]
+    required: true
+  - name: 火星-17
+    entity_type: Equipment
+    aliases: [Hwasong-17, 火星17]
+    required: false
+  - name: 火星-18
+    entity_type: Equipment
+    aliases: [Hwasong-18, 火星18]
+    required: false
+
+expected_events:
+  - event_type: MilitaryPosture
+    description: 导弹试射
+    participants: [朝鲜]
+    required: true
+  - event_type: Statement
+    description: 官方声明
+    participants: [朝鲜]
+    required: false
+
+expected_locations:
+  - name: 平壤
+    country: 朝鲜
+    latitude: 39.0
+    longitude: 125.7
+    tolerance_km: 100
+  - name: 日本海
+    country: null
+    latitude: 40.0
+    longitude: 135.0
+    tolerance_km: 500
+
+expected_sources:
+  - domain: kcna.kp
+    required: false
+  - domain: 38north.org
+    required: false
+
+min_sources: 5
+min_citations: 4
+max_conflict_rate: 0.3
+timeout_minutes: 30
+
+constraints:
+  - 分析技术参数
+  - 评估射程与载荷
+
+time_window: 最近6个月
+region: 朝鲜半岛
+
+tags: [导弹试验, 核导能力, 技术分析]
+difficulty: hard
+notes: 需要整合多方技术评估来源

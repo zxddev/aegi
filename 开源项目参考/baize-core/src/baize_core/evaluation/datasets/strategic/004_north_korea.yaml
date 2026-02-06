@@ -1,0 +1,61 @@
+case_id: strategic_004
+name: 朝鲜半岛安全形势
+description: 分析朝鲜半岛安全形势和朝鲜核导发展态势
+task_type: strategic_situation
+query: 分析朝鲜半岛安全形势及朝鲜核导能力发展
+
+expected_entities:
+  - name: 朝鲜
+    entity_type: Actor
+    aliases: [北朝鲜, DPRK, 朝鲜民主主义人民共和国]
+    required: true
+  - name: 韩国
+    entity_type: Actor
+    aliases: [南朝鲜, 大韩民国, ROK]
+    required: true
+  - name: 美国
+    entity_type: Actor
+    aliases: [美]
+    required: true
+  - name: 朝鲜人民军
+    entity_type: Unit
+    aliases: [人民军]
+    required: false
+
+expected_events:
+  - event_type: MilitaryPosture
+    description: 导弹试验或核活动
+    participants: [朝鲜]
+    required: true
+  - event_type: Diplomatic
+    description: 外交谈判或声明
+    participants: []
+    required: false
+
+expected_locations:
+  - name: 朝鲜半岛
+    country: null
+    latitude: 38.0
+    longitude: 127.0
+    tolerance_km: 300
+  - name: 平壤
+    country: 朝鲜
+    latitude: 39.0
+    longitude: 125.7
+    tolerance_km: 50
+
+min_sources: 5
+min_citations: 4
+max_conflict_rate: 0.35
+timeout_minutes: 30
+
+constraints:
+  - 仅使用公开来源
+  - 关注核导发展动态
+
+time_window: 最近6个月
+region: 朝鲜半岛
+
+tags: [核不扩散, 导弹威胁, 东北亚安全]
+difficulty: hard
+notes: 涉及敏感情报领域，需注意信息可信度

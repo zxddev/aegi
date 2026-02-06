@@ -1,0 +1,64 @@
+case_id: strategic_003
+name: 印太战略格局分析
+description: 分析印太地区的战略格局演变和主要国家的安全合作
+task_type: strategic_situation
+query: 分析印太地区战略格局及主要国家安全合作态势
+
+expected_entities:
+  - name: 美国
+    entity_type: Actor
+    aliases: [美, USA]
+    required: true
+  - name: 日本
+    entity_type: Actor
+    aliases: [日]
+    required: true
+  - name: 澳大利亚
+    entity_type: Actor
+    aliases: [澳]
+    required: true
+  - name: 印度
+    entity_type: Actor
+    aliases: [印]
+    required: false
+  - name: AUKUS
+    entity_type: Organization
+    aliases: [澳英美联盟, 奥库斯]
+    required: false
+  - name: QUAD
+    entity_type: Organization
+    aliases: [四方安全对话, 四方机制]
+    required: false
+
+expected_events:
+  - event_type: Diplomatic
+    description: 峰会或多边会议
+    participants: []
+    required: true
+  - event_type: Exercise
+    description: 联合军事演习
+    participants: []
+    required: false
+
+expected_locations:
+  - name: 印太地区
+    country: null
+    latitude: 0.0
+    longitude: 120.0
+    tolerance_km: 3000
+
+min_sources: 6
+min_citations: 5
+max_conflict_rate: 0.3
+timeout_minutes: 35
+
+constraints:
+  - 关注多边机制
+  - 分析合作与竞争态势
+
+time_window: 最近12个月
+region: 印太地区
+
+tags: [印太战略, 多边合作, 大国博弈]
+difficulty: medium
+notes: 涉及多个国家和机制的复杂战略分析

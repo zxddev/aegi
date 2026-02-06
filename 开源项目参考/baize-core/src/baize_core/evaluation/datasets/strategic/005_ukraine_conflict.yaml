@@ -1,0 +1,65 @@
+case_id: strategic_005
+name: 乌克兰冲突态势
+description: 分析乌克兰冲突的战略态势和国际影响
+task_type: strategic_situation
+query: 分析乌克兰冲突当前态势及其对国际安全格局的影响
+
+expected_entities:
+  - name: 俄罗斯
+    entity_type: Actor
+    aliases: [俄, 俄联邦]
+    required: true
+  - name: 乌克兰
+    entity_type: Actor
+    aliases: [乌]
+    required: true
+  - name: 北约
+    entity_type: Organization
+    aliases: [NATO, 北大西洋公约组织]
+    required: true
+  - name: 欧盟
+    entity_type: Organization
+    aliases: [EU, 欧洲联盟]
+    required: false
+
+expected_events:
+  - event_type: Engagement
+    description: 军事冲突或交战
+    participants: [俄罗斯, 乌克兰]
+    required: true
+  - event_type: Economic
+    description: 制裁或经济措施
+    participants: []
+    required: false
+  - event_type: Diplomatic
+    description: 外交斡旋或谈判
+    participants: []
+    required: false
+
+expected_locations:
+  - name: 乌克兰
+    country: 乌克兰
+    latitude: 48.5
+    longitude: 31.0
+    tolerance_km: 500
+  - name: 基辅
+    country: 乌克兰
+    latitude: 50.4
+    longitude: 30.5
+    tolerance_km: 50
+
+min_sources: 6
+min_citations: 6
+max_conflict_rate: 0.4
+timeout_minutes: 35
+
+constraints:
+  - 综合多方信息来源
+  - 关注军事与外交动态
+
+time_window: 最近3个月
+region: 东欧
+
+tags: [地区冲突, 大国博弈, 欧洲安全]
+difficulty: hard
+notes: 高动态冲突场景，信息更新频繁

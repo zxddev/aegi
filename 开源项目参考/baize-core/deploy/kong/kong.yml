@@ -1,0 +1,80 @@
+# Kong API Gateway 配置
+# 用于统一 API 路由、认证和限流
+
+_format_version: "3.0"
+_transform: true
+
+services:
+  # Agent Fabric API
+  - name: baize-core-api
+    url: http://baize-core:8000
+    routes:
+      - name: baize-core-route
+        paths:
+          - /api/v1/agent
+        strip_path: true
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 100
+              policy: local
+          - name: cors
+            config:
+              origins:
+                - "*"
+              methods:
+                - GET
+                - POST
+                - OPTIONS
+              headers:
+                - Authorization
+                - Content-Type
+              max_age: 3600
+
+  # MCP Gateway API
+  - name: mcp-gateway-api
+    url: http://mcp-gateway:8080
+    routes:
+      - name: mcp-gateway-route
+        paths:
+          - /api/v1/mcp
+        strip_path: true
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 200
+              policy: local
+          - name: key-auth
+            config:
+              key_names:
+                - X-API-Key
+                - Authorization
+
+  # Keycloak 认证服务
+  - name: keycloak-auth
+    url: http://keycloak:8080
+    routes:
+      - name: keycloak-route
+        paths:
+          - /auth
+        strip_path: false
+
+consumers:
+  - username: baize-core-internal
+    keyauth_credentials:
+      - key: ${INTERNAL_API_KEY}
+
+plugins:
+  # 全局日志
+  - name: file-log
+    config:
+      path: /var/log/kong/access.log
+      reopen: true
+
+  # 全局 Prometheus 指标
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true

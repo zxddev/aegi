@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "fixture_id": "defgeo-001",
+      "domain": "defense-geopolitics",
+      "artifact": {
+        "kind": "html",
+        "path": "defense-geopolitics/defgeo-001/artifact.html"
+      },
+      "chunks_path": "defense-geopolitics/defgeo-001/chunks.json",
+      "source_claims_path": "defense-geopolitics/defgeo-001/source_claims.json",
+      "assertions_path": "defense-geopolitics/defgeo-001/assertions.json"
+    },
+    {
+      "fixture_id": "defgeo-002",
+      "domain": "defense-geopolitics",
+      "artifact": {
+        "kind": "pdf",
+        "path": "defense-geopolitics/defgeo-002/artifact.pdf"
+      },
+      "parsed_text_path": "defense-geopolitics/defgeo-002/parsed_text.txt",
+      "chunks_path": "defense-geopolitics/defgeo-002/chunks.json",
+      "source_claims_path": "defense-geopolitics/defgeo-002/source_claims.json",
+      "assertions_path": "defense-geopolitics/defgeo-002/assertions.json"
+    }
+  ]
+}

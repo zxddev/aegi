@@ -1,0 +1,14 @@
+{
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_defgeo_001_0001",
+      "quote": "Exampleland announced that it will conduct a maritime exercise near the Strait of Example.",
+      "selectors": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Exampleland announced that it will conduct a maritime exercise near the Strait of Example."
+        }
+      ]
+    }
+  ]
+}

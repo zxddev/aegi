@@ -1,0 +1,8 @@
+{
+  "assertions": [
+    {
+      "assertion_uid": "as_defgeo_002_0001",
+      "source_claim_uids": ["sc_defgeo_002_0001"]
+    }
+  ]
+}

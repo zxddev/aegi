@@ -1,0 +1,57 @@
+case_id: operational_001
+name: 海上联合演习分析
+description: 分析某次海上联合军事演习的兵力部署、行动时间线和作战要素
+task_type: operational_action
+query: 分析近期西太平洋海上联合军事演习的兵力构成与行动特点
+
+expected_entities:
+  - name: 第七舰队
+    entity_type: Unit
+    aliases: [美国第七舰队, 7th Fleet]
+    required: true
+  - name: 海上自卫队
+    entity_type: Unit
+    aliases: [日本海上自卫队, JMSDF]
+    required: false
+  - name: 里根号
+    entity_type: Equipment
+    aliases: [CVN-76, USS Ronald Reagan]
+    required: false
+
+expected_events:
+  - event_type: Exercise
+    description: 联合海上演习
+    participants: []
+    required: true
+  - event_type: Deployment
+    description: 舰艇部署或机动
+    participants: []
+    required: true
+
+expected_locations:
+  - name: 西太平洋
+    country: null
+    latitude: 20.0
+    longitude: 135.0
+    tolerance_km: 1000
+  - name: 菲律宾海
+    country: null
+    latitude: 15.0
+    longitude: 130.0
+    tolerance_km: 500
+
+min_sources: 5
+min_citations: 4
+max_conflict_rate: 0.25
+timeout_minutes: 30
+
+constraints:
+  - 关注兵力编成
+  - 分析演习科目
+
+time_window: 最近6个月
+region: 西太平洋
+
+tags: [海上演习, 联合行动, 兵力部署]
+difficulty: medium
+notes: 行动研究核心用例，关注战术细节

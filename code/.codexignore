@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+.git/
+*.lock
+*.log
+target/
+__pycache__/
+.venv/

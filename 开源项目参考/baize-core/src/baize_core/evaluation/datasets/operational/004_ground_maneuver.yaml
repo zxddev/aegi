@@ -1,0 +1,61 @@
+case_id: operational_004
+name: 地面部队机动分析
+description: 分析地面部队的跨区机动和部署调整
+task_type: operational_action
+query: 分析俄乌冲突中俄军地面部队的机动与部署特点
+
+expected_entities:
+  - name: 俄罗斯陆军
+    entity_type: Unit
+    aliases: [俄军地面部队]
+    required: true
+  - name: 瓦格纳集团
+    entity_type: Unit
+    aliases: [Wagner, 瓦格纳]
+    required: false
+  - name: T-90
+    entity_type: Equipment
+    aliases: [T-90主战坦克]
+    required: false
+
+expected_events:
+  - event_type: Movement
+    description: 部队机动或调动
+    participants: []
+    required: true
+  - event_type: Engagement
+    description: 地面交战
+    participants: []
+    required: true
+  - event_type: SupportLogistics
+    description: 后勤补给
+    participants: []
+    required: false
+
+expected_locations:
+  - name: 顿巴斯
+    country: 乌克兰
+    latitude: 48.0
+    longitude: 38.0
+    tolerance_km: 200
+  - name: 扎波罗热
+    country: 乌克兰
+    latitude: 47.8
+    longitude: 35.2
+    tolerance_km: 100
+
+min_sources: 5
+min_citations: 5
+max_conflict_rate: 0.4
+timeout_minutes: 35
+
+constraints:
+  - 综合开源情报
+  - 关注战线变化
+
+time_window: 最近1个月
+region: 乌克兰东部
+
+tags: [地面作战, 部队机动, 战线态势]
+difficulty: hard
+notes: 高动态战场环境，信息时效性要求高

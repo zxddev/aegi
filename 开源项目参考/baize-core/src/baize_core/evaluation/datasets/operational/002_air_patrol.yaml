@@ -1,0 +1,57 @@
+case_id: operational_002
+name: 空中巡逻行动研究
+description: 研究特定空域的空中巡逻和侦察行动模式
+task_type: operational_action
+query: 分析东海防空识别区空中巡逻行动的特点与规律
+
+expected_entities:
+  - name: 东部战区空军
+    entity_type: Unit
+    aliases: [东部战区航空兵]
+    required: true
+  - name: 歼-16
+    entity_type: Equipment
+    aliases: [J-16]
+    required: false
+  - name: 运-8
+    entity_type: Equipment
+    aliases: [Y-8, 运八]
+    required: false
+
+expected_events:
+  - event_type: Movement
+    description: 空中巡逻或侦察
+    participants: []
+    required: true
+  - event_type: Incident
+    description: 空中拦截或伴飞
+    participants: []
+    required: false
+
+expected_locations:
+  - name: 东海防空识别区
+    country: null
+    latitude: 30.0
+    longitude: 125.0
+    tolerance_km: 300
+  - name: 钓鱼岛
+    country: null
+    latitude: 25.7
+    longitude: 123.5
+    tolerance_km: 50
+
+min_sources: 4
+min_citations: 3
+max_conflict_rate: 0.3
+timeout_minutes: 25
+
+constraints:
+  - 关注飞行频次
+  - 分析机型构成
+
+time_window: 最近3个月
+region: 东海
+
+tags: [空中巡逻, 防空识别区, 侦察行动]
+difficulty: medium
+notes: 需要整合多来源的飞行追踪数据
