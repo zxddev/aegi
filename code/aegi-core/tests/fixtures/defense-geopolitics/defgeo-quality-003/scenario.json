@@ -1,0 +1,51 @@
+{
+  "description": "Blindspot + upstream missing – forecast unavailable triggers pending_inputs",
+  "judgment": {
+    "uid": "jdg-quality-003",
+    "case_uid": "case-quality-003",
+    "title": "Country Delta border tension assessment",
+    "assertion_uids": ["as-q003-a"]
+  },
+  "source_claims": [
+    {
+      "uid": "sc-q003-a",
+      "case_uid": "case-quality-003",
+      "artifact_version_uid": "av-020",
+      "chunk_uid": "ch-020",
+      "evidence_uid": "ev-020",
+      "quote": "Troop movements observed near the Delta-Epsilon border.",
+      "attributed_to": "Open Source Intelligence",
+      "language": "en",
+      "created_at": "2026-01-10T06:00:00Z"
+    }
+  ],
+  "assertions": [
+    {
+      "uid": "as-q003-a",
+      "case_uid": "case-quality-003",
+      "kind": "event",
+      "value": {"description": "Troop movements near Delta-Epsilon border"},
+      "source_claim_uids": ["sc-q003-a"],
+      "confidence": 0.6,
+      "created_at": "2026-01-10T08:00:00Z"
+    }
+  ],
+  "hypotheses": [
+    {
+      "uid": "hyp-q003-a",
+      "case_uid": "case-quality-003",
+      "label": "Country Delta is escalating border tensions",
+      "supporting_assertion_uids": ["as-q003-a"],
+      "confidence": 0.5,
+      "created_at": "2026-01-10T10:00:00Z"
+    }
+  ],
+  "narratives": [],
+  "forecasts": null,
+  "expected": {
+    "status": "partial",
+    "has_pending_consistency": true,
+    "blindspot_count_gte": 1,
+    "has_coverage_blindspot": true
+  }
+}

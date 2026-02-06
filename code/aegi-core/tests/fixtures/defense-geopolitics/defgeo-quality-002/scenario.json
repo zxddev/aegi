@@ -1,0 +1,82 @@
+{
+  "description": "Bias examples – single source dependency and confirmation bias",
+  "judgment": {
+    "uid": "jdg-quality-002",
+    "case_uid": "case-quality-002",
+    "title": "Country Beta arms deal assessment",
+    "assertion_uids": ["as-q002-a", "as-q002-b"]
+  },
+  "source_claims": [
+    {
+      "uid": "sc-q002-a",
+      "case_uid": "case-quality-002",
+      "artifact_version_uid": "av-010",
+      "chunk_uid": "ch-010",
+      "evidence_uid": "ev-010",
+      "quote": "Country Beta signed a major arms deal with Country Gamma.",
+      "attributed_to": "State Media Beta",
+      "language": "en",
+      "created_at": "2026-01-20T09:00:00Z"
+    },
+    {
+      "uid": "sc-q002-b",
+      "case_uid": "case-quality-002",
+      "artifact_version_uid": "av-010",
+      "chunk_uid": "ch-011",
+      "evidence_uid": "ev-010",
+      "quote": "The arms deal includes advanced missile systems according to officials.",
+      "attributed_to": "State Media Beta",
+      "language": "en",
+      "created_at": "2026-01-20T09:30:00Z"
+    }
+  ],
+  "assertions": [
+    {
+      "uid": "as-q002-a",
+      "case_uid": "case-quality-002",
+      "kind": "event",
+      "value": {"description": "Arms deal signed between Beta and Gamma"},
+      "source_claim_uids": ["sc-q002-a"],
+      "confidence": 0.7,
+      "created_at": "2026-01-20T10:00:00Z"
+    },
+    {
+      "uid": "as-q002-b",
+      "case_uid": "case-quality-002",
+      "kind": "event",
+      "value": {"description": "Deal includes advanced missile systems"},
+      "source_claim_uids": ["sc-q002-b"],
+      "confidence": 0.65,
+      "created_at": "2026-01-20T10:30:00Z"
+    }
+  ],
+  "hypotheses": [
+    {
+      "uid": "hyp-q002-a",
+      "case_uid": "case-quality-002",
+      "label": "Country Beta is expanding military capability via arms deal",
+      "supporting_assertion_uids": ["as-q002-a", "as-q002-b"],
+      "confidence": 0.7,
+      "created_at": "2026-01-20T12:00:00Z"
+    }
+  ],
+  "narratives": [
+    {
+      "uid": "nar-q002-a",
+      "case_uid": "case-quality-002",
+      "title": "Beta-Gamma arms deal",
+      "assertion_uids": ["as-q002-a", "as-q002-b"],
+      "hypothesis_uids": ["hyp-q002-a"],
+      "created_at": "2026-01-20T14:00:00Z"
+    }
+  ],
+  "forecasts": [
+    {"uid": "fc-q002-a", "label": "Deal proceeds", "probability": 0.6}
+  ],
+  "expected": {
+    "status": "complete",
+    "bias_flag_count_gte": 1,
+    "has_single_source_bias": true,
+    "bias_flags_have_source_claim_uids": true
+  }
+}
