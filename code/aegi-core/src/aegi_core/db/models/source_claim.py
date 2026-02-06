@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Author: msq
+
 from datetime import datetime
 
 import sqlalchemy as sa
@@ -44,6 +46,9 @@ class SourceClaim(Base):
 
     attributed_to: Mapped[str | None] = mapped_column(sa.Text())
     modality: Mapped[str | None] = mapped_column(sa.String(32))
+    segment_ref: Mapped[str | None] = mapped_column(sa.String(128))
+    media_time_range: Mapped[dict | None] = mapped_column(JSONB)
+
 
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False
