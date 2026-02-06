@@ -1,0 +1,73 @@
+{
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_fc_001_0001",
+      "quote": "Satellite imagery confirmed new military installations along the northern border.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Satellite imagery confirmed new military installations along the northern border."}]
+    },
+    {
+      "source_claim_uid": "sc_fc_001_0002",
+      "quote": "Intelligence reports verified troop movements consistent with offensive posture.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Intelligence reports verified troop movements consistent with offensive posture."}]
+    },
+    {
+      "source_claim_uid": "sc_fc_001_0003",
+      "quote": "Diplomatic channels confirmed suspension of bilateral talks.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Diplomatic channels confirmed suspension of bilateral talks."}]
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_uid": "as_fc_001_0001",
+      "source_claim_uids": ["sc_fc_001_0001"],
+      "kind": "event",
+      "value": {"description": "New military installations confirmed via satellite"},
+      "confidence": 0.9,
+      "created_at": "2026-01-15T10:00:00Z"
+    },
+    {
+      "assertion_uid": "as_fc_001_0002",
+      "source_claim_uids": ["sc_fc_001_0002"],
+      "kind": "event",
+      "value": {"description": "Troop movements verified consistent with offensive posture"},
+      "confidence": 0.85,
+      "created_at": "2026-01-20T10:00:00Z"
+    },
+    {
+      "assertion_uid": "as_fc_001_0003",
+      "source_claim_uids": ["sc_fc_001_0003"],
+      "kind": "event",
+      "value": {"description": "Bilateral talks confirmed suspended"},
+      "confidence": 0.8,
+      "created_at": "2026-01-25T10:00:00Z"
+    }
+  ],
+  "hypotheses": [
+    {
+      "hypothesis_uid": "hyp_fc_001_0001",
+      "label": "Military escalation along northern border is imminent",
+      "supporting_assertion_uids": ["as_fc_001_0001", "as_fc_001_0002", "as_fc_001_0003"],
+      "confidence": 0.85
+    }
+  ],
+  "narratives": [
+    {
+      "narrative_uid": "nar_fc_001_0001",
+      "title": "Northern border tension escalation",
+      "assertion_uids": ["as_fc_001_0001", "as_fc_001_0002", "as_fc_001_0003"],
+      "hypothesis_uids": ["hyp_fc_001_0001"]
+    }
+  ],
+  "indicators": [
+    {"name": "troop_movement_index", "timestamps": ["2026-01-15", "2026-01-20", "2026-01-25"], "values": [0.3, 0.6, 0.9]},
+    {"name": "diplomatic_tension_index", "timestamps": ["2026-01-15", "2026-01-20", "2026-01-25"], "values": [0.2, 0.5, 0.8]}
+  ],
+  "expected": {
+    "scenario_count_gte": 1,
+    "has_evidence_citations": true,
+    "has_alternatives": true,
+    "has_trigger_conditions": true,
+    "grounding_level": "FACT",
+    "status": "published"
+  }
+}

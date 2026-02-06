@@ -1,0 +1,35 @@
+{
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_fc_003_0001",
+      "quote": "Unverified social media posts claim unusual activity near the coast.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Unverified social media posts claim unusual activity near the coast."}]
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_uid": "as_fc_003_0001",
+      "source_claim_uids": ["sc_fc_003_0001"],
+      "kind": "event",
+      "value": {"description": "Unverified social media reports of coastal activity"},
+      "confidence": 0.2,
+      "created_at": "2026-02-05T10:00:00Z"
+    }
+  ],
+  "hypotheses": [
+    {
+      "hypothesis_uid": "hyp_fc_003_0001",
+      "label": "Naval blockade preparation underway",
+      "supporting_assertion_uids": [],
+      "confidence": 0.15
+    }
+  ],
+  "narratives": [],
+  "indicators": [],
+  "expected": {
+    "grounding_level": "HYPOTHESIS",
+    "probability_is_none": true,
+    "status": "degraded",
+    "has_alternatives": true
+  }
+}
