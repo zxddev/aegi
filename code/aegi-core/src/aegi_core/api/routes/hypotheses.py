@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aegi_core.api.deps import get_db_session, get_llm_backend
+from aegi_core.api.deps import get_db_session, get_llm_client
 from aegi_core.api.errors import not_found
 from aegi_core.contracts.llm_governance import BudgetContext
 from aegi_core.contracts.schemas import AssertionV1, SourceClaimV1
@@ -108,7 +108,7 @@ async def generate_hypotheses_endpoint(
     case_uid: str,
     body: GenerateIn,
     session: AsyncSession = Depends(get_db_session),
-    llm: LLMBackend = Depends(get_llm_backend),
+    llm: LLMBackend = Depends(get_llm_client),
 ) -> GenerateOut:
     """生成竞争性假设。"""
     rows_a = await session.execute(

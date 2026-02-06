@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aegi_core.api.deps import get_db_session, get_llm_backend
+from aegi_core.api.deps import get_db_session, get_llm_client
 from aegi_core.contracts.llm_governance import BudgetContext
 from aegi_core.contracts.schemas import AssertionV1, SourceClaimV1
 from aegi_core.db.models.action import Action
@@ -65,7 +65,7 @@ async def claim_extract_endpoint(
     case_uid: str,
     body: ClaimExtractRequest,
     session: AsyncSession = Depends(get_db_session),
-    llm: LLMBackend = Depends(get_llm_backend),
+    llm: LLMBackend = Depends(get_llm_client),
 ) -> ClaimExtractResponse:
     """Extract claims from a chunk."""
     budget = BudgetContext(max_tokens=4096, max_cost_usd=1.0)

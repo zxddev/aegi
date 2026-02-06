@@ -11,6 +11,7 @@ Evidence:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from time import monotonic_ns
 from typing import Any
@@ -420,6 +421,41 @@ class PipelineOrchestrator:
 
     # ── shared stage helpers ──────────────────────────────────────
 
+    @staticmethod
+    def _run_or_skip(
+        active: list[str],
+        stage_name: str,
+        existing: list | None,
+        inputs: list,
+        fn: Any,
+        result: PipelineResult,
+        *,
+        unpack_first: bool = False,
+    ) -> tuple[list, PipelineResult]:
+        """通用三分支阶段执行：已提供→skip / 输入为空→skip+[] / else→_run_stage。"""
+        if stage_name in active:
+            if existing is not None:
+                result.stages.append(
+                    StageResult(stage=stage_name, status="skipped",
+                                duration_ms=0, output=existing)
+                )
+            elif not inputs:
+                result.stages.append(
+                    StageResult(stage=stage_name, status="skipped",
+                                duration_ms=0, output=[])
+                )
+                existing = []
+            else:
+                sr = _run_stage(stage_name, fn)
+                if sr.status == "success":
+                    existing = sr.output[0] if unpack_first else sr.output
+                else:
+                    existing = []
+                result.stages.append(sr)
+        if existing is None:
+            existing = []
+        return existing, result
+
     def _stage_assertion_fuse(
         self,
         active: list[str],
@@ -428,42 +464,11 @@ class PipelineOrchestrator:
         assertions: list[AssertionV1] | None,
         result: PipelineResult,
     ) -> tuple[list[AssertionV1], PipelineResult]:
-        if "assertion_fuse" in active:
-            if assertions is not None:
-                result.stages.append(
-                    StageResult(
-                        stage="assertion_fuse",
-                        status="skipped",
-                        duration_ms=0,
-                        output=assertions,
-                    )
-                )
-            elif not source_claims:
-                result.stages.append(
-                    StageResult(
-                        stage="assertion_fuse",
-                        status="skipped",
-                        duration_ms=0,
-                        output=[],
-                    )
-                )
-                assertions = []
-            else:
-                sr = _run_stage(
-                    "assertion_fuse",
-                    lambda: assertion_fuser.fuse_claims(
-                        source_claims,
-                        case_uid=case_uid,
-                    ),
-                )
-                if sr.status == "success":
-                    assertions = sr.output[0]
-                else:
-                    assertions = []
-                result.stages.append(sr)
-        if assertions is None:
-            assertions = []
-        return assertions, result
+        return self._run_or_skip(
+            active, "assertion_fuse", assertions, source_claims,
+            lambda: assertion_fuser.fuse_claims(source_claims, case_uid=case_uid),
+            result, unpack_first=True,
+        )
 
     def _stage_hypothesis_sync(
         self,
@@ -474,45 +479,19 @@ class PipelineOrchestrator:
         hypotheses: list[HypothesisV1] | None,
         result: PipelineResult,
     ) -> tuple[list[HypothesisV1], PipelineResult]:
-        if "hypothesis_analyze" in active:
-            if hypotheses is not None:
-                result.stages.append(
-                    StageResult(
-                        stage="hypothesis_analyze",
-                        status="skipped",
-                        duration_ms=0,
-                        output=hypotheses,
+        return self._run_or_skip(
+            active, "hypothesis_analyze", hypotheses, assertions,
+            lambda: [
+                _ach_to_hypothesis(r, case_uid)
+                for r in [
+                    hypothesis_engine.analyze_hypothesis(
+                        "Auto-generated hypothesis from assertions",
+                        assertions, source_claims,
                     )
-                )
-            elif not assertions:
-                result.stages.append(
-                    StageResult(
-                        stage="hypothesis_analyze",
-                        status="skipped",
-                        duration_ms=0,
-                        output=[],
-                    )
-                )
-                hypotheses = []
-            else:
-                sr = _run_stage(
-                    "hypothesis_analyze",
-                    lambda: [
-                        _ach_to_hypothesis(r, case_uid)
-                        for r in [
-                            hypothesis_engine.analyze_hypothesis(
-                                "Auto-generated hypothesis from assertions",
-                                assertions,
-                                source_claims,
-                            )
-                        ]
-                    ],
-                )
-                hypotheses = sr.output if sr.status == "success" else []
-                result.stages.append(sr)
-        if hypotheses is None:
-            hypotheses = []
-        return hypotheses, result
+                ]
+            ],
+            result,
+        )
 
     def _stage_narrative(
         self,
@@ -521,38 +500,11 @@ class PipelineOrchestrator:
         narratives: list[NarrativeV1] | None,
         result: PipelineResult,
     ) -> tuple[list[NarrativeV1], PipelineResult]:
-        if "narrative_build" in active:
-            if narratives is not None:
-                result.stages.append(
-                    StageResult(
-                        stage="narrative_build",
-                        status="skipped",
-                        duration_ms=0,
-                        output=narratives,
-                    )
-                )
-            elif not source_claims:
-                result.stages.append(
-                    StageResult(
-                        stage="narrative_build",
-                        status="skipped",
-                        duration_ms=0,
-                        output=[],
-                    )
-                )
-                narratives = []
-            else:
-                sr = _run_stage(
-                    "narrative_build",
-                    lambda: narrative_builder.build_narratives(
-                        source_claims,
-                    ),
-                )
-                narratives = sr.output if sr.status == "success" else []
-                result.stages.append(sr)
-        if narratives is None:
-            narratives = []
-        return narratives, result
+        return self._run_or_skip(
+            active, "narrative_build", narratives, source_claims,
+            lambda: narrative_builder.build_narratives(source_claims),
+            result,
+        )
 
     def _stage_forecast(
         self,
@@ -564,41 +516,14 @@ class PipelineOrchestrator:
         forecasts: list[ForecastV1] | None,
         result: PipelineResult,
     ) -> tuple[list[ForecastV1], PipelineResult]:
-        if "forecast_generate" in active:
-            if forecasts is not None:
-                result.stages.append(
-                    StageResult(
-                        stage="forecast_generate",
-                        status="skipped",
-                        duration_ms=0,
-                        output=forecasts,
-                    )
-                )
-            elif not hypotheses:
-                result.stages.append(
-                    StageResult(
-                        stage="forecast_generate",
-                        status="skipped",
-                        duration_ms=0,
-                        output=[],
-                    )
-                )
-                forecasts = []
-            else:
-                sr = _run_stage(
-                    "forecast_generate",
-                    lambda: generate_forecasts(
-                        hypotheses=hypotheses,
-                        assertions=assertions,
-                        narratives=narratives,
-                        case_uid=case_uid,
-                    ),
-                )
-                forecasts = sr.output[0] if sr.status == "success" else []
-                result.stages.append(sr)
-        if forecasts is None:
-            forecasts = []
-        return forecasts, result
+        return self._run_or_skip(
+            active, "forecast_generate", forecasts, hypotheses,
+            lambda: generate_forecasts(
+                hypotheses=hypotheses, assertions=assertions,
+                narratives=narratives, case_uid=case_uid,
+            ),
+            result, unpack_first=True,
+        )
 
     def _stage_quality(
         self,
@@ -672,8 +597,6 @@ class PipelineOrchestrator:
 
 
 def _ach_to_hypothesis(ach: hypothesis_engine.ACHResult, case_uid: str) -> HypothesisV1:
-    from datetime import datetime, timezone
-
     return HypothesisV1(
         uid=uuid.uuid4().hex,
         case_uid=case_uid,

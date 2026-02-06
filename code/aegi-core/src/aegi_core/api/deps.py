@@ -37,11 +37,6 @@ def get_llm_client() -> LLMClient:
     )
 
 
-# keep old name for backward compat
-def get_llm_backend() -> LLMClient:
-    """Returns LLMClient that also satisfies LLMBackend protocol via invoke_as_backend."""
-    return get_llm_client()
-
 
 # ── Tool client ─────────────────────────────────────────────────────
 

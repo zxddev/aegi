@@ -8,7 +8,7 @@ Evidence: Shared contract outputs MUST be file-addressable.
 from __future__ import annotations
 
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProblemDetail(BaseModel):
@@ -20,7 +20,7 @@ class ProblemDetail(BaseModel):
     detail: str | None = None
     instance: str | None = None
     error_code: str
-    extensions: dict = {}
+    extensions: dict = Field(default_factory=dict)
 
 
 # -- Factory helpers -----------------------------------------------------------

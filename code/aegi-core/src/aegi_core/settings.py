@@ -37,5 +37,8 @@ class Settings(BaseSettings):
     s3_secret_key: str = "aegi-minio-password"
     s3_bucket: str = "aegi-artifacts"
 
+    # DB pool
+    db_use_null_pool: bool = False
+
 
 settings = Settings()
