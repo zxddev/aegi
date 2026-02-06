@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aegi_core.api.errors import AegiHTTPError
+from aegi_core.contracts.errors import ProblemDetail
 from aegi_core.api.routes.artifacts import router as artifacts_router
 from aegi_core.api.routes.assertions import router as assertions_router
 from aegi_core.api.routes.cases import router as cases_router
@@ -63,13 +64,10 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(AegiHTTPError)
     async def aegi_http_error_handler(request: Request, exc: AegiHTTPError) -> JSONResponse:
+        pd = exc.to_problem_detail()
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "error_code": exc.error_code,
-                "message": exc.message,
-                "details": exc.details,
-            },
+            content=pd.model_dump(),
         )
 
     @app.exception_handler(RequestValidationError)
@@ -77,14 +75,15 @@ def create_app() -> FastAPI:
         request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
-        return JSONResponse(
-            status_code=422,
-            content={
-                "error_code": "validation_error",
-                "message": "Validation error",
-                "details": {"errors": exc.errors()},
-            },
+        pd = ProblemDetail(
+            type="urn:aegi:error:validation",
+            title="Validation error",
+            status=422,
+            detail="Validation error",
+            error_code="validation_error",
+            extensions={"errors": exc.errors()},
         )
+        return JSONResponse(status_code=422, content=pd.model_dump())
 
     @app.exception_handler(StarletteHTTPException)
     async def starlette_http_exception_handler(
@@ -98,14 +97,15 @@ def create_app() -> FastAPI:
         }.issubset(exc.detail.keys()):
             return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "error_code": "http_error",
-                "message": "HTTP error",
-                "details": {"status_code": exc.status_code, "detail": exc.detail},
-            },
+        pd = ProblemDetail(
+            type="urn:aegi:error:http",
+            title="HTTP error",
+            status=exc.status_code,
+            detail=str(exc.detail),
+            error_code="http_error",
+            extensions={"status_code": exc.status_code},
         )
+        return JSONResponse(status_code=exc.status_code, content=pd.model_dump())
 
     @app.get("/health")
     def health() -> dict:
