@@ -1,0 +1,48 @@
+{
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_ach_002_0001",
+      "quote": "Country Beta denied any involvement in the border incident.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Country Beta denied any involvement in the border incident."}]
+    },
+    {
+      "source_claim_uid": "sc_ach_002_0002",
+      "quote": "Independent observers refuted the official narrative of the border clash.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Independent observers refuted the official narrative of the border clash."}]
+    },
+    {
+      "source_claim_uid": "sc_ach_002_0003",
+      "quote": "Forensic evidence disputed the timeline presented by Country Beta.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Forensic evidence disputed the timeline presented by Country Beta."}]
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_uid": "as_ach_002_0001",
+      "source_claim_uids": ["sc_ach_002_0001"],
+      "kind": "event",
+      "value": {"description": "Country Beta denied involvement in border incident"},
+      "confidence": 0.6
+    },
+    {
+      "assertion_uid": "as_ach_002_0002",
+      "source_claim_uids": ["sc_ach_002_0002"],
+      "kind": "event",
+      "value": {"description": "Observers refuted official narrative"},
+      "confidence": 0.75
+    },
+    {
+      "assertion_uid": "as_ach_002_0003",
+      "source_claim_uids": ["sc_ach_002_0003"],
+      "kind": "event",
+      "value": {"description": "Forensic evidence disputed the timeline"},
+      "confidence": 0.8
+    }
+  ],
+  "hypothesis": "Country Beta was involved in the border incident despite official denial.",
+  "expected": {
+    "contradicting_count_gte": 1,
+    "coverage_score_gte": 0.3,
+    "confidence_lte": 0.5
+  }
+}
