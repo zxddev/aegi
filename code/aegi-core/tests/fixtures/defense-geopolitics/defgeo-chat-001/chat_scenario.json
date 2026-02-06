@@ -1,0 +1,23 @@
+{
+  "question": "What maritime exercise was announced near the Strait of Example?",
+  "expected_answer_type": "FACT",
+  "expected_has_citations": true,
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_defgeo_chat_001_0001",
+      "quote": "Exampleland announced that it will conduct a maritime exercise near the Strait of Example.",
+      "selectors": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Exampleland announced that it will conduct a maritime exercise near the Strait of Example."
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_uid": "as_defgeo_chat_001_0001",
+      "source_claim_uids": ["sc_defgeo_chat_001_0001"]
+    }
+  ]
+}

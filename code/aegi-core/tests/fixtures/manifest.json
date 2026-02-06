@@ -43,5 +43,21 @@
       "aliases": ["defgeo-defense-geopolitics-chat-unanswerable-002"],
       "chat_scenario_path": "defense-geopolitics/defgeo-chat-002/chat_scenario.json"
     }
+  ],
+  "chat_fixtures": [
+    {
+      "fixture_id": "defgeo-chat-001",
+      "domain": "defense-geopolitics",
+      "scenario_type": "chat_answerable",
+      "aliases": ["defgeo-defense-geopolitics-chat-answerable-001"],
+      "chat_scenario_path": "defense-geopolitics/defgeo-chat-001/chat_scenario.json"
+    },
+    {
+      "fixture_id": "defgeo-chat-002",
+      "domain": "defense-geopolitics",
+      "scenario_type": "chat_unanswerable",
+      "aliases": ["defgeo-defense-geopolitics-chat-unanswerable-002"],
+      "chat_scenario_path": "defense-geopolitics/defgeo-chat-002/chat_scenario.json"
+    }
   ]
 }
