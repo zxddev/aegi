@@ -13,6 +13,7 @@ from aegi_core.api.routes.evidence import router as evidence_router
 from aegi_core.api.routes.judgments import router as judgments_router
 from aegi_core.api.routes.source_claims import router as source_claims_router
 from aegi_core.api.routes.tool_traces import router as tool_traces_router
+from aegi_core.api.routes.chat import router as chat_router
 
 
 def create_app() -> FastAPI:
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(assertions_router)
     app.include_router(judgments_router)
     app.include_router(tool_traces_router)
+    app.include_router(chat_router)
 
     @app.exception_handler(AegiHTTPError)
     async def aegi_http_error_handler(request: Request, exc: AegiHTTPError) -> JSONResponse:
