@@ -25,6 +25,17 @@ class LLMClient:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._default_model = default_model
+        self._http = httpx.AsyncClient(
+            timeout=120,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+    async def aclose(self) -> None:
+        """关闭底层 HTTP 连接池。"""
+        await self._http.aclose()
 
     async def invoke(
         self,
@@ -52,17 +63,12 @@ class LLMClient:
         if max_tokens or budget.max_tokens:
             payload["max_output_tokens"] = max_tokens or budget.max_tokens
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                f"{self._base_url}/v1/responses",
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        resp = await self._http.post(
+            f"{self._base_url}/v1/responses",
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
         # Extract text from Responses API format
         text = ""
@@ -129,15 +135,10 @@ class LLMClient:
     async def embed(self, text: str, model: str | None = None) -> list[float]:
         """Get embedding vector from local vLLM BGE-M3 service."""
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{_settings.embedding_base_url}/v1/embeddings",
-                headers={
-                    "Authorization": f"Bearer {_settings.embedding_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"model": model or _settings.embedding_model, "input": text},
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        resp = await self._http.post(
+            f"{_settings.embedding_base_url}/v1/embeddings",
+            json={"model": model or _settings.embedding_model, "input": text},
+        )
+        resp.raise_for_status()
+        data = resp.json()
         return data["data"][0]["embedding"]
