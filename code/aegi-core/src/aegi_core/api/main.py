@@ -65,10 +65,11 @@ def create_app() -> FastAPI:
     @app.exception_handler(AegiHTTPError)
     async def aegi_http_error_handler(request: Request, exc: AegiHTTPError) -> JSONResponse:
         pd = exc.to_problem_detail()
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=pd.model_dump(),
-        )
+        content = pd.model_dump()
+        # 向后兼容：保留旧 message/details 字段
+        content["message"] = exc.message
+        content["details"] = exc.details
+        return JSONResponse(status_code=exc.status_code, content=content)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(
