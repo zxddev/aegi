@@ -1,0 +1,46 @@
+[
+  {
+    "uid": "sc-nar-003-a",
+    "case_uid": "case-nar-003",
+    "artifact_version_uid": "av-020",
+    "chunk_uid": "ch-020",
+    "evidence_uid": "ev-020",
+    "quote": "The alliance strengthens regional security and stability",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "strengthens regional security"}],
+    "attributed_to": "pro-source-1",
+    "created_at": "2025-08-01T09:00:00Z"
+  },
+  {
+    "uid": "sc-nar-003-b",
+    "case_uid": "case-nar-003",
+    "artifact_version_uid": "av-021",
+    "chunk_uid": "ch-021",
+    "evidence_uid": "ev-021",
+    "quote": "Alliance contributes to peace and regional stability",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "peace and regional stability"}],
+    "attributed_to": "pro-source-2",
+    "created_at": "2025-08-02T11:00:00Z"
+  },
+  {
+    "uid": "sc-nar-003-c",
+    "case_uid": "case-nar-003",
+    "artifact_version_uid": "av-022",
+    "chunk_uid": "ch-022",
+    "evidence_uid": "ev-022",
+    "quote": "The alliance destabilizes the region and provokes conflict",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "destabilizes the region"}],
+    "attributed_to": "anti-source-1",
+    "created_at": "2025-08-01T10:00:00Z"
+  },
+  {
+    "uid": "sc-nar-003-d",
+    "case_uid": "case-nar-003",
+    "artifact_version_uid": "av-023",
+    "chunk_uid": "ch-023",
+    "evidence_uid": "ev-023",
+    "quote": "Alliance provokes instability and threatens regional peace",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "provokes instability"}],
+    "attributed_to": "anti-source-2",
+    "created_at": "2025-08-03T08:00:00Z"
+  }
+]

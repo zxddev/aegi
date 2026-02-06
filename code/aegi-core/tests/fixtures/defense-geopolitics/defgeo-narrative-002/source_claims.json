@@ -1,0 +1,57 @@
+[
+  {
+    "uid": "sc-nar-002-a",
+    "case_uid": "case-nar-002",
+    "artifact_version_uid": "av-010",
+    "chunk_uid": "ch-010",
+    "evidence_uid": "ev-010",
+    "quote": "Country Y secretly developed hypersonic missile capability",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "hypersonic missile"}],
+    "attributed_to": "outlet-1",
+    "created_at": "2025-07-10T12:00:00Z"
+  },
+  {
+    "uid": "sc-nar-002-b",
+    "case_uid": "case-nar-002",
+    "artifact_version_uid": "av-011",
+    "chunk_uid": "ch-011",
+    "evidence_uid": "ev-011",
+    "quote": "Country Y secretly developed hypersonic missile technology",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "hypersonic missile technology"}],
+    "attributed_to": "outlet-2",
+    "created_at": "2025-07-10T12:05:00Z"
+  },
+  {
+    "uid": "sc-nar-002-c",
+    "case_uid": "case-nar-002",
+    "artifact_version_uid": "av-012",
+    "chunk_uid": "ch-012",
+    "evidence_uid": "ev-012",
+    "quote": "Country Y secretly developed hypersonic missile systems",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "hypersonic missile systems"}],
+    "attributed_to": "outlet-3",
+    "created_at": "2025-07-10T12:10:00Z"
+  },
+  {
+    "uid": "sc-nar-002-d",
+    "case_uid": "case-nar-002",
+    "artifact_version_uid": "av-013",
+    "chunk_uid": "ch-013",
+    "evidence_uid": "ev-013",
+    "quote": "Country Y secretly developed hypersonic missile arsenal",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "hypersonic missile arsenal"}],
+    "attributed_to": "outlet-4",
+    "created_at": "2025-07-10T12:15:00Z"
+  },
+  {
+    "uid": "sc-nar-002-e",
+    "case_uid": "case-nar-002",
+    "artifact_version_uid": "av-014",
+    "chunk_uid": "ch-014",
+    "evidence_uid": "ev-014",
+    "quote": "Country Y secretly developed hypersonic missile program",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "hypersonic missile program"}],
+    "attributed_to": "outlet-5",
+    "created_at": "2025-07-10T12:20:00Z"
+  }
+]

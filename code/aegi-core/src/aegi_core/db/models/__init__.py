@@ -5,6 +5,7 @@ from aegi_core.db.models.case import Case
 from aegi_core.db.models.chunk import Chunk
 from aegi_core.db.models.evidence import Evidence
 from aegi_core.db.models.judgment import Judgment
+from aegi_core.db.models.narrative import Narrative
 from aegi_core.db.models.source_claim import SourceClaim
 from aegi_core.db.models.tool_trace import ToolTrace
 
@@ -17,6 +18,7 @@ __all__ = [
     "Chunk",
     "Evidence",
     "Judgment",
+    "Narrative",
     "SourceClaim",
     "ToolTrace",
 ]
