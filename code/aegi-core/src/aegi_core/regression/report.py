@@ -26,6 +26,8 @@ def generate_regression_report(fixtures_root: Path) -> dict:
     for item in fixtures:
         if not isinstance(item, dict):
             continue
+        if "artifact" not in item:
+            continue
         metrics = compute_metrics_for_fixture(fixtures_root, item)
         per_fixture.append(
             {

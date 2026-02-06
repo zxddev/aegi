@@ -1,0 +1,20 @@
+{
+  "description": "Breaking ontology change",
+  "versions": {
+    "1.0.0": {
+      "entity_types": ["actor", "location"],
+      "event_types": ["deployment", "summit"],
+      "relation_types": ["participated_in", "co_mentioned"]
+    },
+    "2.0.0": {
+      "entity_types": ["agent"],
+      "event_types": ["deployment"],
+      "relation_types": ["participated_in"]
+    }
+  },
+  "expected": {
+    "overall_level": "breaking",
+    "auto_upgrade_allowed": false,
+    "breaking_count": 4
+  }
+}

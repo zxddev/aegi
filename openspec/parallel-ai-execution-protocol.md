@@ -84,3 +84,9 @@
 
 1. 按本协议分层顺序手工合并。
 2. 保持同等门禁（contract tests + feature tests）。
+
+## 9. Gate-0 Registration
+
+| Change | Status | Deliverables |
+|---|---|---|
+| `foundation-common-contracts` | **Gate-0** | `contracts/schemas.py`, `contracts/errors.py`, `contracts/audit.py`, `contracts/llm_governance.py`, contract tests, fixture manifest v2 |

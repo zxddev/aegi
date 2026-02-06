@@ -1,0 +1,38 @@
+{
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_ach_003_0001",
+      "quote": "Unverified reports suggest activity along a remote zone.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Unverified reports suggest activity along a remote zone."}]
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_uid": "as_ach_003_0001",
+      "source_claim_uids": ["sc_ach_003_0001"],
+      "kind": "event",
+      "value": {"description": "Unverified activity reports"},
+      "confidence": 0.3
+    },
+    {
+      "assertion_uid": "as_ach_003_0002",
+      "source_claim_uids": [],
+      "kind": "event",
+      "value": {"description": "No corroborating data available"},
+      "confidence": 0.1
+    },
+    {
+      "assertion_uid": "as_ach_003_0003",
+      "source_claim_uids": [],
+      "kind": "event",
+      "value": {"description": "Coverage gap in the area"},
+      "confidence": 0.2
+    }
+  ],
+  "hypothesis": "A planned escalation is imminent based on intercepted signals.",
+  "expected": {
+    "gap_count_gte": 1,
+    "coverage_score_lte": 0.5,
+    "grounding_level": "HYPOTHESIS"
+  }
+}

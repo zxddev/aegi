@@ -1,0 +1,50 @@
+{
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_ach_001_0001",
+      "quote": "Country Alpha confirmed deployment of naval assets to the Strait region.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Country Alpha confirmed deployment of naval assets to the Strait region."}]
+    },
+    {
+      "source_claim_uid": "sc_ach_001_0002",
+      "quote": "Satellite imagery verified increased military activity near the Strait.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Satellite imagery verified increased military activity near the Strait."}]
+    },
+    {
+      "source_claim_uid": "sc_ach_001_0003",
+      "quote": "Diplomatic sources affirmed that exercises are scheduled for next month.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Diplomatic sources affirmed that exercises are scheduled for next month."}]
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_uid": "as_ach_001_0001",
+      "source_claim_uids": ["sc_ach_001_0001"],
+      "kind": "event",
+      "value": {"description": "Naval deployment confirmed by Country Alpha"},
+      "confidence": 0.9
+    },
+    {
+      "assertion_uid": "as_ach_001_0002",
+      "source_claim_uids": ["sc_ach_001_0002"],
+      "kind": "event",
+      "value": {"description": "Satellite verified military buildup"},
+      "confidence": 0.85
+    },
+    {
+      "assertion_uid": "as_ach_001_0003",
+      "source_claim_uids": ["sc_ach_001_0003"],
+      "kind": "event",
+      "value": {"description": "Diplomatic sources affirmed exercise schedule"},
+      "confidence": 0.8
+    }
+  ],
+  "hypothesis": "Country Alpha is preparing a military exercise near the Strait.",
+  "expected": {
+    "supporting_count_gte": 2,
+    "contradicting_count": 0,
+    "gap_count": 0,
+    "coverage_score_gte": 0.5,
+    "confidence_gte": 0.5
+  }
+}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Author: msq
+
 from datetime import datetime
 
 import sqlalchemy as sa
@@ -27,6 +29,9 @@ class Action(Base):
 
     inputs: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     outputs: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(sa.String(64))
+    span_id: Mapped[str | None] = mapped_column(sa.String(64))
+
 
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False

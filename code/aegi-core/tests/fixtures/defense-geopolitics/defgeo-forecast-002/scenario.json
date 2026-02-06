@@ -1,0 +1,56 @@
+{
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_fc_002_0001",
+      "quote": "Country Beta confirmed withdrawal of forces from the disputed zone.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Country Beta confirmed withdrawal of forces from the disputed zone."}]
+    },
+    {
+      "source_claim_uid": "sc_fc_002_0002",
+      "quote": "Intercepted communications suggest Country Beta is reinforcing positions.",
+      "selectors": [{"type": "TextQuoteSelector", "exact": "Intercepted communications suggest Country Beta is reinforcing positions."}]
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_uid": "as_fc_002_0001",
+      "source_claim_uids": ["sc_fc_002_0001"],
+      "kind": "event",
+      "value": {"description": "Country Beta confirmed force withdrawal"},
+      "confidence": 0.7,
+      "created_at": "2026-02-01T10:00:00Z"
+    },
+    {
+      "assertion_uid": "as_fc_002_0002",
+      "source_claim_uids": ["sc_fc_002_0002"],
+      "kind": "event",
+      "value": {"description": "Intercepted comms suggest reinforcement, contradicts withdrawal"},
+      "confidence": 0.6,
+      "created_at": "2026-02-03T10:00:00Z"
+    }
+  ],
+  "hypotheses": [
+    {
+      "hypothesis_uid": "hyp_fc_002_0001",
+      "label": "Country Beta is de-escalating the conflict",
+      "supporting_assertion_uids": ["as_fc_002_0001"],
+      "confidence": 0.7
+    },
+    {
+      "hypothesis_uid": "hyp_fc_002_0002",
+      "label": "Country Beta is feigning withdrawal while reinforcing",
+      "supporting_assertion_uids": ["as_fc_002_0002"],
+      "confidence": 0.6
+    }
+  ],
+  "narratives": [],
+  "indicators": [
+    {"name": "force_posture_index", "timestamps": ["2026-02-01", "2026-02-03"], "values": [0.4, 0.7]}
+  ],
+  "expected": {
+    "scenario_count_gte": 2,
+    "has_conflicting_hypotheses": true,
+    "has_alternatives": true,
+    "status": "pending_review"
+  }
+}

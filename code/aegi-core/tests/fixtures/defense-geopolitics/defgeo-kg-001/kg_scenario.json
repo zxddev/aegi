@@ -1,0 +1,30 @@
+{
+  "description": "Stable SPO mapping",
+  "assertions": [
+    {
+      "uid": "as_kg_001_0001",
+      "case_uid": "case_kg_001",
+      "kind": "fused_claim",
+      "value": {"attributed_to": "Exampleland", "rationale": "Fused from 1 claim(s)"},
+      "source_claim_uids": ["sc_kg_001_0001"],
+      "confidence": 0.9,
+      "created_at": "2025-01-15T00:00:00Z"
+    },
+    {
+      "uid": "as_kg_001_0002",
+      "case_uid": "case_kg_001",
+      "kind": "fused_claim",
+      "value": {"attributed_to": "Neighborstan", "rationale": "Fused from 1 claim(s)"},
+      "source_claim_uids": ["sc_kg_001_0002"],
+      "confidence": 0.9,
+      "created_at": "2025-01-15T00:00:00Z"
+    }
+  ],
+  "ontology_version": "1.0.0",
+  "expected": {
+    "entity_count": 2,
+    "event_count": 0,
+    "relation_count": 0,
+    "entity_labels": ["Exampleland", "Neighborstan"]
+  }
+}

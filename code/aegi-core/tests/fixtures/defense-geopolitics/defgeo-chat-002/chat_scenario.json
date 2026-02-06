@@ -1,0 +1,8 @@
+{
+  "question": "What is the current status of submarine deployments in the Arctic Ocean?",
+  "expected_answer_type": "HYPOTHESIS",
+  "expected_has_citations": false,
+  "expected_cannot_answer": true,
+  "source_claims": [],
+  "assertions": []
+}

@@ -1,0 +1,24 @@
+{
+  "chunks": [
+    {
+      "chunk_uid": "chunk_claim_002_0001",
+      "text": "Exampleland confirmed the deployment of 3 warships to the Strait of Example.",
+      "anchor_set": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Exampleland confirmed the deployment of 3 warships to the Strait of Example."
+        }
+      ]
+    },
+    {
+      "chunk_uid": "chunk_claim_002_0002",
+      "text": "Exampleland denied any military deployment near the Strait of Example.",
+      "anchor_set": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Exampleland denied any military deployment near the Strait of Example."
+        }
+      ]
+    }
+  ]
+}
