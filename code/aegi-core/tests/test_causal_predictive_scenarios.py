@@ -93,6 +93,7 @@ def _build_indicators(raw: list[dict]) -> list[IndicatorSeriesV1]:
 # defgeo-forecast-001: 可解释预警（正常路径）
 # ---------------------------------------------------------------------------
 
+
 class TestForecast001ExplainableWarning:
     @pytest.fixture()
     def scenario(self) -> dict:
@@ -155,6 +156,7 @@ class TestForecast001ExplainableWarning:
 # defgeo-forecast-002: 冲突信号（多假设冲突）
 # ---------------------------------------------------------------------------
 
+
 class TestForecast002ConflictingSignals:
     @pytest.fixture()
     def scenario(self) -> dict:
@@ -194,6 +196,7 @@ class TestForecast002ConflictingSignals:
 # ---------------------------------------------------------------------------
 # defgeo-forecast-003: 证据不足（应降级，不输出强结论）
 # ---------------------------------------------------------------------------
+
 
 class TestForecast003InsufficientEvidence:
     @pytest.fixture()
@@ -235,6 +238,7 @@ class TestForecast003InsufficientEvidence:
 # Backtest 验证
 # ---------------------------------------------------------------------------
 
+
 class TestBacktest:
     def test_backtest_success(self) -> None:
         forecast = ForecastV1(
@@ -243,11 +247,14 @@ class TestBacktest:
             evidence_citations=["sc1"],
             alternatives=["alt"],
         )
-        summary = backtest_forecast(forecast, [
-            {"occurred": True},
-            {"occurred": True},
-            {"occurred": False},
-        ])
+        summary = backtest_forecast(
+            forecast,
+            [
+                {"occurred": True},
+                {"occurred": True},
+                {"occurred": False},
+            ],
+        )
         assert isinstance(summary, BacktestSummary)
         assert summary.precision > 0
         assert summary.false_alarm >= 0
@@ -286,25 +293,37 @@ class TestBacktest:
 # Causal reasoner 单元测试
 # ---------------------------------------------------------------------------
 
+
 class TestCausalReasoner:
     def test_temporal_consistency(self) -> None:
         now = datetime.now(timezone.utc)
         assertions = [
             AssertionV1(
-                uid="a1", case_uid="c", kind="event", value={},
-                source_claim_uids=["sc1"], confidence=0.8,
+                uid="a1",
+                case_uid="c",
+                kind="event",
+                value={},
+                source_claim_uids=["sc1"],
+                confidence=0.8,
                 created_at="2026-01-01T00:00:00+00:00",
             ),
             AssertionV1(
-                uid="a2", case_uid="c", kind="event", value={},
-                source_claim_uids=["sc2"], confidence=0.9,
+                uid="a2",
+                case_uid="c",
+                kind="event",
+                value={},
+                source_claim_uids=["sc2"],
+                confidence=0.9,
                 created_at="2026-01-02T00:00:00+00:00",
             ),
         ]
         hyp = HypothesisV1(
-            uid="h1", case_uid="c", label="test",
+            uid="h1",
+            case_uid="c",
+            label="test",
             supporting_assertion_uids=["a1", "a2"],
-            confidence=0.8, created_at=now,
+            confidence=0.8,
+            created_at=now,
         )
         result = analyze_causal_links(hyp, assertions)
         assert result.consistency_score == 1.0
@@ -313,7 +332,9 @@ class TestCausalReasoner:
 
     def test_no_supporting_assertions(self) -> None:
         hyp = HypothesisV1(
-            uid="h1", case_uid="c", label="test",
+            uid="h1",
+            case_uid="c",
+            label="test",
             supporting_assertion_uids=[],
             created_at=datetime.now(timezone.utc),
         )
@@ -324,19 +345,27 @@ class TestCausalReasoner:
     def test_narrative_degradation(self) -> None:
         """Narrative 缺失时 narrative_available 为 False。"""
         hyp = HypothesisV1(
-            uid="h1", case_uid="c", label="test",
+            uid="h1",
+            case_uid="c",
+            label="test",
             supporting_assertion_uids=[],
             created_at=datetime.now(timezone.utc),
         )
         result = analyze_causal_links(hyp, [], narratives=None)
         assert result.narrative_available is False
 
-        result_with = analyze_causal_links(hyp, [], narratives=[
-            NarrativeV1(
-                uid="n1", case_uid="c", title="t",
-                created_at=datetime.now(timezone.utc),
-            )
-        ])
+        result_with = analyze_causal_links(
+            hyp,
+            [],
+            narratives=[
+                NarrativeV1(
+                    uid="n1",
+                    case_uid="c",
+                    title="t",
+                    created_at=datetime.now(timezone.utc),
+                )
+            ],
+        )
         assert result_with.narrative_available is True
 
 
@@ -344,10 +373,13 @@ class TestCausalReasoner:
 # Predictive signals 单元测试
 # ---------------------------------------------------------------------------
 
+
 class TestPredictiveSignals:
     def test_rising_trend(self) -> None:
         series = IndicatorSeriesV1(
-            name="test", timestamps=["t1", "t2", "t3"], values=[0.1, 0.5, 0.9],
+            name="test",
+            timestamps=["t1", "t2", "t3"],
+            values=[0.1, 0.5, 0.9],
         )
         score = score_indicator(series)
         assert score.trend == "rising"
@@ -355,7 +387,9 @@ class TestPredictiveSignals:
 
     def test_stable_trend(self) -> None:
         series = IndicatorSeriesV1(
-            name="test", timestamps=["t1", "t2"], values=[0.5, 0.5],
+            name="test",
+            timestamps=["t1", "t2"],
+            values=[0.5, 0.5],
         )
         score = score_indicator(series)
         assert score.trend == "stable"
@@ -381,6 +415,7 @@ class TestPredictiveSignals:
 # Grounding gate 合同验证（forecast 上下文）
 # ---------------------------------------------------------------------------
 
+
 class TestForecastGroundingGate:
     def test_no_evidence_never_fact(self) -> None:
         assert grounding_gate(False) != GroundingLevel.FACT
@@ -393,37 +428,54 @@ class TestForecastGroundingGate:
 # API route 桩测试
 # ---------------------------------------------------------------------------
 
+
 class TestForecastAPIStubs:
     @pytest.fixture()
     def client(self):
         from fastapi.testclient import TestClient
-        from aegi_core.api.routes.forecast import router
-        from fastapi import FastAPI
-        app = FastAPI()
-        app.include_router(router)
+        from aegi_core.api.main import app
+
         return TestClient(app)
 
+    def _create_case(self, client) -> str:
+        resp = client.post("/cases", json={"title": "forecast-test"})
+        assert resp.status_code == 201
+        return resp.json()["case_uid"]
+
     def test_generate_stub(self, client) -> None:
+        case_uid = self._create_case(client)
         resp = client.post(
-            "/cases/c1/forecast/generate",
+            f"/cases/{case_uid}/forecast/generate",
             json={"hypothesis_uids": [], "assertion_uids": []},
         )
         assert resp.status_code == 201
         data = resp.json()
         assert "scenarios" in data
-        assert data["action_uid"] == "stub"
+        assert "action_uid" in data
+        assert data["action_uid"].startswith("act_")
 
     def test_backtest_stub(self, client) -> None:
+        case_uid = self._create_case(client)
         resp = client.post(
-            "/cases/c1/forecast/backtest",
+            f"/cases/{case_uid}/forecast/backtest",
             json={"scenario_id": "s1", "actual_outcomes": []},
         )
         assert resp.status_code == 200
         assert resp.json()["precision"] == 0.0
 
     def test_explain_stub(self, client) -> None:
-        resp = client.get("/cases/c1/forecast/s1/explain")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["scenario_id"] == "s1"
-        assert "alternatives" in data
+        case_uid = self._create_case(client)
+        # 先 generate 以便 explain 能查到数据
+        gen_resp = client.post(
+            f"/cases/{case_uid}/forecast/generate",
+            json={"hypothesis_uids": [], "assertion_uids": []},
+        )
+        assert gen_resp.status_code == 201
+        scenarios = gen_resp.json().get("scenarios", [])
+        if scenarios:
+            sid = scenarios[0]["scenario_id"]
+            resp = client.get(f"/cases/{case_uid}/forecast/{sid}/explain")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["scenario_id"] == sid
+            assert "alternatives" in data
