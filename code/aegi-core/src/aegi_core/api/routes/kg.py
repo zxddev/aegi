@@ -10,10 +10,15 @@ Evidence:
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from uuid import uuid4
 
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from aegi_core.api.deps import get_db_session
 from aegi_core.contracts.schemas import AssertionV1
+from aegi_core.db.models.action import Action
 from aegi_core.services import kg_mapper, ontology_versioning
 
 router = APIRouter(tags=["kg"])
@@ -31,36 +36,84 @@ class UpgradeRequest(BaseModel):
 
 
 @router.post("/cases/{case_uid}/kg/build_from_assertions")
-async def build_from_assertions(case_uid: str, body: BuildGraphRequest) -> dict:
+async def build_from_assertions(
+    case_uid: str,
+    body: BuildGraphRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
     result = kg_mapper.build_graph(
         body.assertions,
         case_uid=case_uid,
         ontology_version=body.ontology_version,
     )
-    if len(result) == 6:
-        _, _, _, action, tool_trace, problem = result
-        return {"error": problem.model_dump(), "action": action.model_dump()}
 
-    entities, events, relations, action, tool_trace = result
+    if len(result) == 6:
+        _, _, _, svc_action, svc_trace, problem = result
+        action_uid = f"act_{uuid4().hex}"
+        session.add(
+            Action(
+                uid=action_uid,
+                case_uid=case_uid,
+                action_type="kg.build",
+                inputs=svc_action.inputs,
+                outputs=svc_action.outputs,
+                trace_id=svc_action.trace_id,
+            )
+        )
+        await session.commit()
+        return {"error": problem.model_dump(), "action_uid": action_uid}
+
+    entities, events, relations, svc_action, svc_trace = result
+    action_uid = f"act_{uuid4().hex}"
+    session.add(
+        Action(
+            uid=action_uid,
+            case_uid=case_uid,
+            action_type="kg.build",
+            inputs=svc_action.inputs,
+            outputs=svc_action.outputs,
+            trace_id=svc_action.trace_id,
+        )
+    )
+    await session.commit()
+
     return {
         "entities": [e.model_dump() for e in entities],
         "events": [e.model_dump() for e in events],
         "relations": [r.model_dump() for r in relations],
-        "action": action.model_dump(),
+        "action_uid": action_uid,
     }
 
 
 @router.post("/cases/{case_uid}/ontology/upgrade")
-async def ontology_upgrade(case_uid: str, body: UpgradeRequest) -> dict:
-    report_or_err, action, tool_trace = ontology_versioning.upgrade_ontology(
+async def ontology_upgrade(
+    case_uid: str,
+    body: UpgradeRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    report_or_err, svc_action, svc_trace = ontology_versioning.upgrade_ontology(
         case_uid=case_uid,
         from_version=body.from_version,
         to_version=body.to_version,
         approved=body.approved,
     )
+
+    action_uid = f"act_{uuid4().hex}"
+    session.add(
+        Action(
+            uid=action_uid,
+            case_uid=case_uid,
+            action_type="ontology.upgrade",
+            inputs=svc_action.inputs,
+            outputs=svc_action.outputs,
+            trace_id=svc_action.trace_id,
+        )
+    )
+    await session.commit()
+
     return {
         "result": report_or_err.model_dump(),
-        "action": action.model_dump(),
+        "action_uid": action_uid,
     }
 
 

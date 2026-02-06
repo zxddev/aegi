@@ -44,12 +44,13 @@ def _make_assertions(raw: list[dict]) -> list[AssertionV1]:
 
 
 class TestKGMapping:
-
     def test_build_graph_produces_entities(self) -> None:
         fixture = _load_fixture("defgeo-kg-001")
         assertions = _make_assertions(fixture["assertions"])
         result = kg_mapper.build_graph(
-            assertions, case_uid="case_kg_001", ontology_version="1.0.0",
+            assertions,
+            case_uid="case_kg_001",
+            ontology_version="1.0.0",
         )
         assert len(result) == 5
         entities, events, relations, action, tool_trace = result
@@ -61,7 +62,9 @@ class TestKGMapping:
         fixture = _load_fixture("defgeo-kg-001")
         assertions = _make_assertions(fixture["assertions"])
         entities, events, relations, action, tool_trace = kg_mapper.build_graph(
-            assertions, case_uid="case_kg_001", ontology_version="1.0.0",
+            assertions,
+            case_uid="case_kg_001",
+            ontology_version="1.0.0",
         )
         assert action.action_type == "kg_build"
         assert "assertion_uids" in action.inputs
@@ -74,7 +77,9 @@ class TestKGMapping:
         assertions = _make_assertions(fixture["assertions"])
         input_uids = {a.uid for a in assertions}
         entities, *_ = kg_mapper.build_graph(
-            assertions, case_uid="case_kg_001", ontology_version="1.0.0",
+            assertions,
+            case_uid="case_kg_001",
+            ontology_version="1.0.0",
         )
         for e in entities:
             assert all(uid in input_uids for uid in e.source_assertion_uids)
@@ -82,16 +87,21 @@ class TestKGMapping:
     def test_event_assertion_produces_event_node(self) -> None:
         now = datetime.now(timezone.utc)
         event_assertion = AssertionV1(
-            uid="as_event_001", case_uid="case_ev",
+            uid="as_event_001",
+            case_uid="case_ev",
             kind="fused_claim",
             value={
                 "attributed_to": "Exampleland",
                 "rationale": "deployment of naval assets on 2025-01-15",
             },
-            source_claim_uids=["sc_ev_001"], confidence=0.9, created_at=now,
+            source_claim_uids=["sc_ev_001"],
+            confidence=0.9,
+            created_at=now,
         )
         entities, events, relations, action, _ = kg_mapper.build_graph(
-            [event_assertion], case_uid="case_ev", ontology_version="1.0.0",
+            [event_assertion],
+            case_uid="case_ev",
+            ontology_version="1.0.0",
         )
         assert len(events) == 1
         assert events[0].event_type == "fused_claim"
@@ -103,24 +113,29 @@ class TestKGMapping:
 
     def test_empty_assertions_produces_empty_graph(self) -> None:
         entities, events, relations, action, _ = kg_mapper.build_graph(
-            [], case_uid="case_empty", ontology_version="1.0.0",
+            [],
+            case_uid="case_empty",
+            ontology_version="1.0.0",
         )
         assert entities == [] and events == [] and relations == []
 
 
 class TestOntologyVersioning:
-
     def setup_method(self) -> None:
         reset_registry()
 
     def test_compatible_upgrade(self) -> None:
         fixture = _load_fixture("defgeo-kg-002")
         for ver, spec in fixture["versions"].items():
-            register_version(OntologyVersion(
-                version=ver, entity_types=spec["entity_types"],
-                event_types=spec["event_types"], relation_types=spec["relation_types"],
-                created_at=datetime.now(timezone.utc),
-            ))
+            register_version(
+                OntologyVersion(
+                    version=ver,
+                    entity_types=spec["entity_types"],
+                    event_types=spec["event_types"],
+                    relation_types=spec["relation_types"],
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
         report = ontology_versioning.compute_compatibility("1.0.0", "1.1.0")
         assert not isinstance(report, ontology_versioning.ProblemDetail)
         assert report.overall_level == ChangeLevel.COMPATIBLE
@@ -129,15 +144,23 @@ class TestOntologyVersioning:
     def test_breaking_upgrade_denied_without_approval(self) -> None:
         fixture = _load_fixture("defgeo-kg-003")
         for ver, spec in fixture["versions"].items():
-            register_version(OntologyVersion(
-                version=ver, entity_types=spec["entity_types"],
-                event_types=spec["event_types"], relation_types=spec["relation_types"],
-                created_at=datetime.now(timezone.utc),
-            ))
+            register_version(
+                OntologyVersion(
+                    version=ver,
+                    entity_types=spec["entity_types"],
+                    event_types=spec["event_types"],
+                    relation_types=spec["relation_types"],
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
         report_or_err, action, tool_trace = ontology_versioning.upgrade_ontology(
-            case_uid="case_break", from_version="1.0.0", to_version="2.0.0", approved=False,
+            case_uid="case_break",
+            from_version="1.0.0",
+            to_version="2.0.0",
+            approved=False,
         )
         from aegi_core.contracts.errors import ProblemDetail
+
         assert isinstance(report_or_err, ProblemDetail)
         assert report_or_err.error_code == "upgrade_denied"
         assert action.action_type == "ontology_upgrade"
@@ -146,15 +169,23 @@ class TestOntologyVersioning:
     def test_breaking_upgrade_allowed_with_approval(self) -> None:
         fixture = _load_fixture("defgeo-kg-003")
         for ver, spec in fixture["versions"].items():
-            register_version(OntologyVersion(
-                version=ver, entity_types=spec["entity_types"],
-                event_types=spec["event_types"], relation_types=spec["relation_types"],
-                created_at=datetime.now(timezone.utc),
-            ))
+            register_version(
+                OntologyVersion(
+                    version=ver,
+                    entity_types=spec["entity_types"],
+                    event_types=spec["event_types"],
+                    relation_types=spec["relation_types"],
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
         report, action, tool_trace = ontology_versioning.upgrade_ontology(
-            case_uid="case_break", from_version="1.0.0", to_version="2.0.0", approved=True,
+            case_uid="case_break",
+            from_version="1.0.0",
+            to_version="2.0.0",
+            approved=True,
         )
         from aegi_core.services.ontology_versioning import CompatibilityReport
+
         assert isinstance(report, CompatibilityReport)
         assert report.overall_level == ChangeLevel.BREAKING
         assert tool_trace.status == "ok"
@@ -163,11 +194,15 @@ class TestOntologyVersioning:
     def test_compatibility_report_categories(self) -> None:
         fixture = _load_fixture("defgeo-kg-003")
         for ver, spec in fixture["versions"].items():
-            register_version(OntologyVersion(
-                version=ver, entity_types=spec["entity_types"],
-                event_types=spec["event_types"], relation_types=spec["relation_types"],
-                created_at=datetime.now(timezone.utc),
-            ))
+            register_version(
+                OntologyVersion(
+                    version=ver,
+                    entity_types=spec["entity_types"],
+                    event_types=spec["event_types"],
+                    relation_types=spec["relation_types"],
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
         report = ontology_versioning.compute_compatibility("1.0.0", "2.0.0")
         assert not isinstance(report, ontology_versioning.ProblemDetail)
         levels = {c.level for c in report.changes}
@@ -183,12 +218,12 @@ class TestOntologyVersioning:
     def test_version_not_found(self) -> None:
         report = ontology_versioning.compute_compatibility("0.0.0", "9.9.9")
         from aegi_core.contracts.errors import ProblemDetail
+
         assert isinstance(report, ProblemDetail)
         assert report.error_code == "not_found"
 
 
 class TestKGAPI:
-
     @pytest.fixture
     def app(self):
         return create_app()
@@ -199,10 +234,16 @@ class TestKGAPI:
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
 
+    async def _create_case(self, client: AsyncClient, title: str = "kg-test") -> str:
+        resp = await client.post("/cases", json={"title": title})
+        assert resp.status_code == 201
+        return resp.json()["case_uid"]
+
     async def test_build_from_assertions_api(self, client: AsyncClient) -> None:
+        case_uid = await self._create_case(client)
         fixture = _load_fixture("defgeo-kg-001")
         resp = await client.post(
-            "/cases/case_kg_001/kg/build_from_assertions",
+            f"/cases/{case_uid}/kg/build_from_assertions",
             json={
                 "assertions": fixture["assertions"],
                 "ontology_version": "1.0.0",
@@ -212,23 +253,32 @@ class TestKGAPI:
         data = resp.json()
         assert "entities" in data
         assert len(data["entities"]) == fixture["expected"]["entity_count"]
-        assert "action" in data
+        assert "action_uid" in data
 
     async def test_ontology_upgrade_api(self, client: AsyncClient) -> None:
+        case_uid = await self._create_case(client)
         reset_registry()
         now = datetime.now(timezone.utc)
-        register_version(OntologyVersion(
-            version="1.0.0", entity_types=["actor"],
-            event_types=["deployment"], relation_types=["participated_in"],
-            created_at=now,
-        ))
-        register_version(OntologyVersion(
-            version="1.1.0", entity_types=["actor", "org"],
-            event_types=["deployment"], relation_types=["participated_in"],
-            created_at=now,
-        ))
+        register_version(
+            OntologyVersion(
+                version="1.0.0",
+                entity_types=["actor"],
+                event_types=["deployment"],
+                relation_types=["participated_in"],
+                created_at=now,
+            )
+        )
+        register_version(
+            OntologyVersion(
+                version="1.1.0",
+                entity_types=["actor", "org"],
+                event_types=["deployment"],
+                relation_types=["participated_in"],
+                created_at=now,
+            )
+        )
         resp = await client.post(
-            "/cases/case_api/ontology/upgrade",
+            f"/cases/{case_uid}/ontology/upgrade",
             json={"from_version": "1.0.0", "to_version": "1.1.0"},
         )
         assert resp.status_code == 200
@@ -238,16 +288,24 @@ class TestKGAPI:
     async def test_compatibility_report_api(self, client: AsyncClient) -> None:
         reset_registry()
         now = datetime.now(timezone.utc)
-        register_version(OntologyVersion(
-            version="1.0.0", entity_types=["actor"],
-            event_types=[], relation_types=[],
-            created_at=now,
-        ))
-        register_version(OntologyVersion(
-            version="2.0.0", entity_types=[],
-            event_types=[], relation_types=[],
-            created_at=now,
-        ))
+        register_version(
+            OntologyVersion(
+                version="1.0.0",
+                entity_types=["actor"],
+                event_types=[],
+                relation_types=[],
+                created_at=now,
+            )
+        )
+        register_version(
+            OntologyVersion(
+                version="2.0.0",
+                entity_types=[],
+                event_types=[],
+                relation_types=[],
+                created_at=now,
+            )
+        )
         resp = await client.get(
             "/cases/case_api/ontology/2.0.0/compatibility_report",
             params={"from_version": "1.0.0"},
