@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Author: msq
+
 from datetime import datetime
 
 import sqlalchemy as sa
@@ -25,6 +27,10 @@ class Assertion(Base):
     value: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     source_claim_uids: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     confidence: Mapped[float | None] = mapped_column(sa.Float())
+    modality: Mapped[str | None] = mapped_column(sa.String(32))
+    segment_ref: Mapped[str | None] = mapped_column(sa.String(128))
+    media_time_range: Mapped[dict | None] = mapped_column(JSONB)
+
 
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False

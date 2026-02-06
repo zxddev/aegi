@@ -36,6 +36,9 @@ class ToolTrace(Base):
     duration_ms: Mapped[int | None] = mapped_column(sa.Integer)
     error: Mapped[str | None] = mapped_column(sa.Text())
     policy: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(sa.String(64))
+    span_id: Mapped[str | None] = mapped_column(sa.String(64))
+
 
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False
