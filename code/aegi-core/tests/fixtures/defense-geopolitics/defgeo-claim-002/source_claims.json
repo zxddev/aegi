@@ -1,0 +1,26 @@
+{
+  "source_claims": [
+    {
+      "source_claim_uid": "sc_claim_002_0001",
+      "quote": "Exampleland confirmed the deployment of 3 warships to the Strait of Example.",
+      "selectors": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Exampleland confirmed the deployment of 3 warships to the Strait of Example."
+        }
+      ],
+      "attributed_to": "Exampleland"
+    },
+    {
+      "source_claim_uid": "sc_claim_002_0002",
+      "quote": "Exampleland denied any military deployment near the Strait of Example.",
+      "selectors": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Exampleland denied any military deployment near the Strait of Example."
+        }
+      ],
+      "attributed_to": "Exampleland"
+    }
+  ]
+}

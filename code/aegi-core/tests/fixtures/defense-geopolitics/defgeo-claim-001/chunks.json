@@ -1,0 +1,24 @@
+{
+  "chunks": [
+    {
+      "chunk_uid": "chunk_claim_001_0001",
+      "text": "Exampleland confirmed deployment of naval assets to the Strait of Example on 2025-01-15.",
+      "anchor_set": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Exampleland confirmed deployment of naval assets to the Strait of Example on 2025-01-15."
+        }
+      ]
+    },
+    {
+      "chunk_uid": "chunk_claim_001_0002",
+      "text": "Neighborstan expressed concern over the increased military presence near its territorial waters.",
+      "anchor_set": [
+        {
+          "type": "TextQuoteSelector",
+          "exact": "Neighborstan expressed concern over the increased military presence near its territorial waters."
+        }
+      ]
+    }
+  ]
+}

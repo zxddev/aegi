@@ -1,0 +1,16 @@
+{
+  "assertions": [
+    {
+      "assertion_uid": "as_claim_001_0001",
+      "source_claim_uids": ["sc_claim_001_0001"],
+      "kind": "fused_claim",
+      "confidence": 0.9
+    },
+    {
+      "assertion_uid": "as_claim_001_0002",
+      "source_claim_uids": ["sc_claim_001_0002"],
+      "kind": "fused_claim",
+      "confidence": 0.9
+    }
+  ]
+}

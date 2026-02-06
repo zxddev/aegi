@@ -1,0 +1,25 @@
+{
+  "assertions": [
+    {
+      "assertion_uid": "as_claim_002_0001",
+      "source_claim_uids": ["sc_claim_002_0001", "sc_claim_002_0002"],
+      "kind": "fused_claim",
+      "confidence": 0.5,
+      "has_conflict": true
+    }
+  ],
+  "conflict_set": [
+    {
+      "conflict_type": "value_conflict",
+      "claim_uid_a": "sc_claim_002_0001",
+      "claim_uid_b": "sc_claim_002_0002",
+      "rationale": "Same subject 'Exampleland' with contradicting quotes"
+    },
+    {
+      "conflict_type": "modality_conflict",
+      "claim_uid_a": "sc_claim_002_0001",
+      "claim_uid_b": "sc_claim_002_0002",
+      "rationale": "Modality conflict on subject 'Exampleland': confirmed vs denied"
+    }
+  ]
+}
