@@ -13,7 +13,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -73,7 +72,7 @@ class QualityInput(BaseModel):
     hypotheses: list[HypothesisV1] = Field(default_factory=list)
     narratives: list[NarrativeV1] = Field(default_factory=list)
     source_claims: list[SourceClaimV1] = Field(default_factory=list)
-    forecasts: Optional[list[dict]] = None
+    forecasts: list[dict] | None = None
 
 
 # -- Scoring functions ---------------------------------------------------------
@@ -121,7 +120,7 @@ def _coverage(
 def _consistency(
     hypotheses: list[HypothesisV1],
     narratives: list[NarrativeV1],
-    forecasts: Optional[list[dict]],
+    forecasts: list[dict] | None,
 ) -> ConfidenceDimension:
     """上游模块输出冲突程度；forecast 缺失时标记 pending。"""
     if forecasts is None:
@@ -180,7 +179,10 @@ def score_confidence(inp: QualityInput) -> QualityReportV1:
 
     bias_flags = detect_biases(inp.assertions, inp.source_claims, inp.hypotheses)
     blindspots = detect_blindspots(
-        inp.assertions, inp.hypotheses, inp.source_claims, inp.forecasts,
+        inp.assertions,
+        inp.hypotheses,
+        inp.source_claims,
+        inp.forecasts,
     )
 
     unique_sources = {sc.attributed_to for sc in inp.source_claims if sc.attributed_to}
@@ -188,9 +190,7 @@ def score_confidence(inp: QualityInput) -> QualityReportV1:
     has_pending = any(d.status == DimensionStatus.PENDING for d in dims)
     complete_dims = [d for d in dims if d.status == DimensionStatus.COMPLETE]
     avg_score = (
-        round(sum(d.score for d in complete_dims) / len(complete_dims), 4)
-        if complete_dims
-        else 0.0
+        round(sum(d.score for d in complete_dims) / len(complete_dims), 4) if complete_dims else 0.0
     )
 
     if not inp.assertions and not inp.source_claims:

@@ -1,3 +1,4 @@
+# Author: msq
 """Contract tests for LLM governance (task 5.3).
 
 Evidence: openspec/changes/foundation-common-contracts/specs/llm-governance/spec.md
@@ -19,6 +20,7 @@ from aegi_core.contracts.llm_governance import (
 
 # -- Grounding gate (task 2.2) -------------------------------------------------
 
+
 def test_grounding_gate_with_evidence_returns_fact():
     assert grounding_gate(True) == GroundingLevel.FACT
 
@@ -35,6 +37,7 @@ def test_grounding_gate_no_fact_without_citation():
 
 # -- LLMInvocationRequest (task 2.1) -------------------------------------------
 
+
 def test_llm_invocation_request_fields():
     req = LLMInvocationRequest(
         model_id="gpt-4",
@@ -49,6 +52,7 @@ def test_llm_invocation_request_fields():
 
 
 # -- LLMInvocationResult -------------------------------------------------------
+
 
 def test_llm_invocation_result_roundtrip():
     res = LLMInvocationResult(
@@ -66,6 +70,7 @@ def test_llm_invocation_result_roundtrip():
 
 
 # -- Degraded output (task 2.3) ------------------------------------------------
+
 
 def test_degraded_output_budget_exceeded():
     d = DegradedOutput(

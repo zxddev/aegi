@@ -1,3 +1,4 @@
+# Author: msq
 from aegi_core.db.models.action import Action
 from aegi_core.db.models.artifact import ArtifactIdentity, ArtifactVersion
 from aegi_core.db.models.assertion import Assertion

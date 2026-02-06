@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
-from fastapi import Depends as FastApiDepends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,7 +69,7 @@ async def call_tool_archive_url(
     case_uid: str,
     body: ToolArchiveUrlIn,
     session: AsyncSession = Depends(get_db_session),
-    tool: ToolClient = FastApiDepends(get_tool_client),
+    tool: ToolClient = Depends(get_tool_client),
 ) -> dict:
     return await tool_archive_service.call_tool_archive_url(
         session,

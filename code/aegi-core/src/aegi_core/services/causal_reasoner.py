@@ -86,12 +86,14 @@ def analyze_causal_links(
         t_tgt = _parse_created_at(tgt.created_at)
         temporal_ok = t_src <= t_tgt
         strength = ((src.confidence or 0.0) + (tgt.confidence or 0.0)) / 2.0
-        links.append(CausalLink(
-            source_uid=src.uid,
-            target_uid=tgt.uid,
-            strength=strength,
-            temporal_consistent=temporal_ok,
-        ))
+        links.append(
+            CausalLink(
+                source_uid=src.uid,
+                target_uid=tgt.uid,
+                strength=strength,
+                temporal_consistent=temporal_ok,
+            )
+        )
         if temporal_ok:
             consistent_count += 1
 

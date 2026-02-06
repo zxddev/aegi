@@ -10,7 +10,6 @@ Evidence:
 
 from __future__ import annotations
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -28,7 +27,7 @@ class AnswerV1(BaseModel):
     answer_type: GroundingLevel
     evidence_citations: list[EvidenceCitation] = Field(default_factory=list)
     trace_id: str
-    cannot_answer_reason: Optional[str] = None
+    cannot_answer_reason: str | None = None
     follow_up_questions: list[str] = Field(default_factory=list)
 
 

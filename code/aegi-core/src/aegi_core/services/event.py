@@ -8,7 +8,6 @@ Evidence: 事件类 Assertion 映射为 Event 节点。
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -20,7 +19,7 @@ class EventV1(BaseModel):
     case_uid: str
     label: str
     event_type: str
-    timestamp_ref: Optional[str] = None
+    timestamp_ref: str | None = None
     properties: dict = Field(default_factory=dict)
     source_assertion_uids: list[str] = Field(default_factory=list)
     ontology_version: str

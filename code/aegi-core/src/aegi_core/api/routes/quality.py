@@ -9,7 +9,6 @@ Evidence:
 
 from __future__ import annotations
 
-from typing import Optional
 from uuid import uuid4
 
 import sqlalchemy as sa
@@ -43,7 +42,7 @@ class ScoreJudgmentRequest(BaseModel):
     hypotheses: list[HypothesisV1] = Field(default_factory=list)
     narratives: list[NarrativeV1] = Field(default_factory=list)
     source_claims: list[SourceClaimV1] = Field(default_factory=list)
-    forecasts: Optional[list[dict]] = None
+    forecasts: list[dict] | None = None
 
 
 @router.post("/score_judgment")

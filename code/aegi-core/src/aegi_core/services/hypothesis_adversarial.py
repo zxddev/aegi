@@ -197,7 +197,8 @@ def evaluate_adversarial(
     )
 
     action = ActionV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid,
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
         action_type="ach_adversarial",
         rationale=(
             f"Adversarial evaluation: "
@@ -207,17 +208,23 @@ def evaluate_adversarial(
         ),
         inputs={"hypothesis_text": ach.hypothesis_text},
         outputs=result.to_dict(),
-        trace_id=_trace_id, span_id=_span_id, created_at=now,
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
 
     tool_trace = ToolTraceV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid, action_uid=action.uid,
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_uid=action.uid,
         tool_name="ach_adversarial",
         request={"hypothesis_text": ach.hypothesis_text},
         response=result.to_dict(),
         status="ok",
         policy={"prompt_version": "ach_adversarial_v1"},
-        trace_id=_trace_id, span_id=_span_id, created_at=now,
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
 
     return result, action, tool_trace

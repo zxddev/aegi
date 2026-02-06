@@ -33,12 +33,14 @@ def _single_source_dependency(
             sc_uid = a.source_claim_uids[0]
             sc = sc_map.get(sc_uid)
             attr = sc.attributed_to if sc else "unknown"
-            flags.append(BiasFlag(
-                kind="single_source_dependency",
-                description=f"Assertion {a.uid} backed by single source ({attr})",
-                source_claim_uids=list(a.source_claim_uids),
-                rationale="Single source cannot be cross-verified",
-            ))
+            flags.append(
+                BiasFlag(
+                    kind="single_source_dependency",
+                    description=f"Assertion {a.uid} backed by single source ({attr})",
+                    source_claim_uids=list(a.source_claim_uids),
+                    rationale="Single source cannot be cross-verified",
+                )
+            )
     return flags
 
 
@@ -49,12 +51,14 @@ def _single_stance_bias(
     sources = {sc.attributed_to for sc in source_claims if sc.attributed_to}
     if len(sources) == 1 and len(source_claims) > 1:
         src = next(iter(sources))
-        return [BiasFlag(
-            kind="single_stance_bias",
-            description=f"All {len(source_claims)} claims from single source: {src}",
-            source_claim_uids=[sc.uid for sc in source_claims],
-            rationale="Lack of independent corroboration",
-        )]
+        return [
+            BiasFlag(
+                kind="single_stance_bias",
+                description=f"All {len(source_claims)} claims from single source: {src}",
+                source_claim_uids=[sc.uid for sc in source_claims],
+                rationale="Lack of independent corroboration",
+            )
+        ]
     return []
 
 
@@ -74,12 +78,14 @@ def _confirmation_bias(
             for a in assertions:
                 if a.uid in supporting:
                     sc_uids.extend(a.source_claim_uids)
-            flags.append(BiasFlag(
-                kind="confirmation_bias",
-                description=f"Hypothesis {h.uid} has only supporting evidence ({len(supporting)} assertions)",
-                source_claim_uids=sc_uids,
-                rationale="No contradicting evidence found; potential confirmation bias",
-            ))
+            flags.append(
+                BiasFlag(
+                    kind="confirmation_bias",
+                    description=f"Hypothesis {h.uid} has only supporting evidence ({len(supporting)} assertions)",
+                    source_claim_uids=sc_uids,
+                    rationale="No contradicting evidence found; potential confirmation bias",
+                )
+            )
     return flags
 
 

@@ -1,3 +1,4 @@
+# Author: msq
 """add cases and actions
 
 Revision ID: 3f52046a1239
@@ -8,13 +9,10 @@ Create Date: 2026-02-05 21:28:52.022224
 
 from typing import Sequence, Union
 
-from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
-revision: str = '3f52046a1239'
-down_revision: Union[str, None] = 'bc5052692a40'
+revision: str = "3f52046a1239"
+down_revision: Union[str, None] = "bc5052692a40"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

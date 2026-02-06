@@ -160,9 +160,7 @@ class TestIncrementalPipeline:
 
     def test_start_from_hypothesis(self) -> None:
         """defgeo-ach-001: 已有 assertions，从 hypothesis_analyze 开始。"""
-        scenario = json.loads(
-            (FIXTURES / "defgeo-ach-001" / "scenario.json").read_text()
-        )
+        scenario = json.loads((FIXTURES / "defgeo-ach-001" / "scenario.json").read_text())
         claims = [
             _make_claim(uid=sc["source_claim_uid"], quote=sc["quote"])
             for sc in scenario["source_claims"]
@@ -207,10 +205,13 @@ class TestIncrementalPipeline:
         """run_stage 执行单阶段。"""
         claims = _load_claims_from_fixture("defgeo-claim-001")
         orch = PipelineOrchestrator()
-        sr = orch.run_stage("assertion_fuse", {
-            "case_uid": CASE_UID,
-            "source_claims": claims,
-        })
+        sr = orch.run_stage(
+            "assertion_fuse",
+            {
+                "case_uid": CASE_UID,
+                "source_claims": claims,
+            },
+        )
 
         assert isinstance(sr, StageResult)
         assert sr.stage == "assertion_fuse"
@@ -236,9 +237,7 @@ class TestDegradationPaths:
 
     def test_degraded_forecast_scenario(self) -> None:
         """defgeo-forecast-003: 弱证据 → forecast 降级，不 crash。"""
-        scenario = json.loads(
-            (FIXTURES / "defgeo-forecast-003" / "scenario.json").read_text()
-        )
+        scenario = json.loads((FIXTURES / "defgeo-forecast-003" / "scenario.json").read_text())
         claims = [
             _make_claim(uid=sc["source_claim_uid"], quote=sc["quote"])
             for sc in scenario["source_claims"]
@@ -271,9 +270,7 @@ class TestDegradationPaths:
         )
 
         for sr in result.stages:
-            assert sr.status != "error", (
-                f"Stage {sr.stage} errored: {sr.error}"
-            )
+            assert sr.status != "error", f"Stage {sr.stage} errored: {sr.error}"
 
     def test_missing_hypotheses_skips_forecast(self) -> None:
         """无 hypotheses → forecast_generate 阶段 skip。"""
@@ -307,9 +304,7 @@ class TestOrchestrationAPI:
         app = FastAPI()
         app.include_router(router)
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/cases/case_001/pipelines/full_analysis",
                 json={"source_claim_uids": []},
@@ -329,9 +324,7 @@ class TestOrchestrationAPI:
         app = FastAPI()
         app.include_router(router)
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/cases/case_001/pipelines/run_stage",
                 json={"stage_name": "assertion_fuse", "inputs": {}},

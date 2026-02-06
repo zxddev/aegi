@@ -31,7 +31,6 @@ class Assertion(Base):
     segment_ref: Mapped[str | None] = mapped_column(sa.String(128))
     media_time_range: Mapped[dict | None] = mapped_column(JSONB)
 
-
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False
     )

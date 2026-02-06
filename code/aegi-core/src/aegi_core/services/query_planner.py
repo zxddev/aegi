@@ -10,7 +10,6 @@ Evidence:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -33,16 +32,16 @@ class QueryPlanV1(BaseModel):
     filters: dict = Field(default_factory=dict)
     retrieval_steps: list[RetrievalStep] = Field(default_factory=list)
     risk_flags: list[RiskFlag] = Field(default_factory=list)
-    time_range: Optional[dict] = None
-    language: Optional[str] = None
+    time_range: dict | None = None
+    language: str | None = None
 
 
 def plan_query(
     question: str,
     case_uid: str,
     *,
-    time_range: Optional[dict] = None,
-    language: Optional[str] = None,
+    time_range: dict | None = None,
+    language: str | None = None,
 ) -> QueryPlanV1:
     """将自然语言问题转换为 QueryPlanV1。
 

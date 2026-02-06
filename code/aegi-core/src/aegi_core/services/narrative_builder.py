@@ -97,12 +97,14 @@ def trace_narrative(
     for uid in sc_uids:
         c = claim_map.get(uid)
         if c:
-            chain.append({
-                "uid": c.uid,
-                "quote": c.quote,
-                "attributed_to": c.attributed_to,
-                "created_at": c.created_at.isoformat(),
-            })
+            chain.append(
+                {
+                    "uid": c.uid,
+                    "quote": c.quote,
+                    "attributed_to": c.attributed_to,
+                    "created_at": c.created_at.isoformat(),
+                }
+            )
     chain.sort(key=lambda x: x["created_at"])
     return chain
 

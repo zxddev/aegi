@@ -1,3 +1,4 @@
+# Author: msq
 """Unified error model with Problem Details (RFC 9457) (Gate-0).
 
 Source: openspec/changes/foundation-common-contracts/specs/foundation-common/spec.md
@@ -6,7 +7,6 @@ Evidence: Shared contract outputs MUST be file-addressable.
 
 from __future__ import annotations
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -17,13 +17,14 @@ class ProblemDetail(BaseModel):
     type: str = "about:blank"
     title: str
     status: int
-    detail: Optional[str] = None
-    instance: Optional[str] = None
+    detail: str | None = None
+    instance: str | None = None
     error_code: str
     extensions: dict = {}
 
 
 # -- Factory helpers -----------------------------------------------------------
+
 
 def not_found(resource: str, uid: str) -> ProblemDetail:
     return ProblemDetail(

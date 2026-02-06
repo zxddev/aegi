@@ -110,9 +110,7 @@ def analyze_hypothesis(
         has_support = any(k in combined for k in support_keywords)
 
         # 如果 assertion 的 source_claim 引用文本与假设有词汇重叠，视为相关
-        relevance = any(
-            word in combined for word in h_lower.split() if len(word) > 3
-        )
+        relevance = any(word in combined for word in h_lower.split() if len(word) > 3)
 
         if not relevance:
             continue
@@ -124,11 +122,7 @@ def analyze_hypothesis(
 
     # 缺口：没有被任何 supporting/contradicting 覆盖的 assertion
     covered = set(supporting) | set(contradicting)
-    gap_list = [
-        f"assertion {a.uid} not evaluated"
-        for a in assertions
-        if a.uid not in covered
-    ]
+    gap_list = [f"assertion {a.uid} not evaluated" for a in assertions if a.uid not in covered]
 
     coverage = _compute_coverage(supporting, contradicting, len(assertions))
     confidence = _compute_confidence(len(supporting), len(contradicting))
@@ -196,23 +190,32 @@ async def generate_hypotheses(
         raw: list[dict] = await llm.invoke(invocation_req, prompt)
     except Exception as exc:
         duration = _now_ms() - start_ms
-        degraded = DegradedOutput(
-            reason=DegradedReason.MODEL_UNAVAILABLE, detail=str(exc)
-        )
+        degraded = DegradedOutput(reason=DegradedReason.MODEL_UNAVAILABLE, detail=str(exc))
         action = ActionV1(
-            uid=uuid.uuid4().hex, case_uid=case_uid, action_type="ach_generate",
+            uid=uuid.uuid4().hex,
+            case_uid=case_uid,
+            action_type="ach_generate",
             rationale=f"LLM call failed: {exc}",
             inputs={"assertion_count": len(assertions)},
             outputs={"error": str(exc)},
-            trace_id=_trace_id, span_id=_span_id, created_at=now,
+            trace_id=_trace_id,
+            span_id=_span_id,
+            created_at=now,
         )
         tool_trace = ToolTraceV1(
-            uid=uuid.uuid4().hex, case_uid=case_uid, action_uid=action.uid,
-            tool_name="llm_ach_generate", request=invocation_req.model_dump(),
-            response={"error": str(exc)}, status="error",
-            duration_ms=duration, error=str(exc),
+            uid=uuid.uuid4().hex,
+            case_uid=case_uid,
+            action_uid=action.uid,
+            tool_name="llm_ach_generate",
+            request=invocation_req.model_dump(),
+            response={"error": str(exc)},
+            status="error",
+            duration_ms=duration,
+            error=str(exc),
             policy={"model_id": model_id, "prompt_version": PROMPT_VERSION},
-            trace_id=_trace_id, span_id=_span_id, created_at=now,
+            trace_id=_trace_id,
+            span_id=_span_id,
+            created_at=now,
         )
         return [], action, tool_trace, degraded
 
@@ -231,27 +234,40 @@ async def generate_hypotheses(
     grounding = grounding_gate(has_evidence)
 
     llm_result = LLMInvocationResult(
-        model_id=model_id, prompt_version=PROMPT_VERSION,
-        tokens_used=0, cost_usd=0.0, grounding_level=grounding,
+        model_id=model_id,
+        prompt_version=PROMPT_VERSION,
+        tokens_used=0,
+        cost_usd=0.0,
+        grounding_level=grounding,
         evidence_citation_uids=[sc.uid for sc in source_claims],
         trace_id=_trace_id,
     )
 
     action = ActionV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid, action_type="ach_generate",
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_type="ach_generate",
         rationale=f"Generated {len(results)} hypotheses from {len(assertions)} assertions",
         inputs={"assertion_count": len(assertions), "source_claim_count": len(source_claims)},
         outputs={"hypothesis_count": len(results)},
-        trace_id=_trace_id, span_id=_span_id, created_at=now,
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
 
     tool_trace = ToolTraceV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid, action_uid=action.uid,
-        tool_name="llm_ach_generate", request=invocation_req.model_dump(),
-        response={"hypothesis_count": len(results)}, status="ok",
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_uid=action.uid,
+        tool_name="llm_ach_generate",
+        request=invocation_req.model_dump(),
+        response={"hypothesis_count": len(results)},
+        status="ok",
         duration_ms=duration,
         policy={"model_id": model_id, "prompt_version": PROMPT_VERSION},
-        trace_id=_trace_id, span_id=_span_id, created_at=now,
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
 
     return results, action, tool_trace, llm_result
@@ -259,4 +275,5 @@ async def generate_hypotheses(
 
 def _now_ms() -> int:
     from time import monotonic_ns
+
     return monotonic_ns() // 1_000_000

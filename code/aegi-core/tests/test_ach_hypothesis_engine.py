@@ -67,6 +67,7 @@ def _build_assertions(raw: list[dict]) -> list[AssertionV1]:
 # defgeo-ach-001: 支持证据占优
 # ---------------------------------------------------------------------------
 
+
 class TestACH001SupportDominant:
     @pytest.fixture()
     def scenario(self) -> dict:
@@ -83,7 +84,9 @@ class TestACH001SupportDominant:
         assert len(result.supporting_assertion_uids) >= expected["supporting_count_gte"]
 
     def test_no_contradicting(self, result: ACHResult, scenario: dict) -> None:
-        assert len(result.contradicting_assertion_uids) == scenario["expected"]["contradicting_count"]
+        assert (
+            len(result.contradicting_assertion_uids) == scenario["expected"]["contradicting_count"]
+        )
 
     def test_no_gaps(self, result: ACHResult) -> None:
         assert len(result.gap_list) == 0
@@ -105,9 +108,7 @@ class TestACH001SupportDominant:
     def test_adversarial_preserves_disagreement(self, result: ACHResult, scenario: dict) -> None:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
-        adv, action, trace = evaluate_adversarial(
-            result, assertions, claims, case_uid="case_test"
-        )
+        adv, action, trace = evaluate_adversarial(result, assertions, claims, case_uid="case_test")
         assert adv.defense.role == "defense"
         assert adv.prosecution.role == "prosecution"
         assert adv.judge.role == "judge"
@@ -118,6 +119,7 @@ class TestACH001SupportDominant:
 # ---------------------------------------------------------------------------
 # defgeo-ach-002: 反证占优
 # ---------------------------------------------------------------------------
+
 
 class TestACH002ContradictionDominant:
     @pytest.fixture()
@@ -131,7 +133,10 @@ class TestACH002ContradictionDominant:
         return analyze_hypothesis(scenario["hypothesis"], assertions, claims)
 
     def test_has_contradicting(self, result: ACHResult, scenario: dict) -> None:
-        assert len(result.contradicting_assertion_uids) >= scenario["expected"]["contradicting_count_gte"]
+        assert (
+            len(result.contradicting_assertion_uids)
+            >= scenario["expected"]["contradicting_count_gte"]
+        )
 
     def test_coverage(self, result: ACHResult, scenario: dict) -> None:
         assert result.coverage_score >= scenario["expected"]["coverage_score_gte"]
@@ -147,9 +152,7 @@ class TestACH002ContradictionDominant:
     def test_adversarial_conflict_preserved(self, result: ACHResult, scenario: dict) -> None:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
-        adv, _, _ = evaluate_adversarial(
-            result, assertions, claims, case_uid="case_test"
-        )
+        adv, _, _ = evaluate_adversarial(result, assertions, claims, case_uid="case_test")
         # 反证占优时 prosecution 必须有内容
         assert len(adv.prosecution.assertion_uids) > 0
         # judge 必须包含裁决依据
@@ -159,6 +162,7 @@ class TestACH002ContradictionDominant:
 # ---------------------------------------------------------------------------
 # defgeo-ach-003: 证据不足（必须输出 gap）
 # ---------------------------------------------------------------------------
+
 
 class TestACH003InsufficientEvidence:
     @pytest.fixture()
@@ -190,9 +194,7 @@ class TestACH003InsufficientEvidence:
     def test_adversarial_gaps_explicit(self, result: ACHResult, scenario: dict) -> None:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
-        adv, _, _ = evaluate_adversarial(
-            result, assertions, claims, case_uid="case_test"
-        )
+        adv, _, _ = evaluate_adversarial(result, assertions, claims, case_uid="case_test")
         # judge 必须显式列出证据缺口
         assert len(adv.judge.gaps) > 0
 
@@ -200,6 +202,7 @@ class TestACH003InsufficientEvidence:
 # ---------------------------------------------------------------------------
 # grounding_gate 合同验证
 # ---------------------------------------------------------------------------
+
 
 class TestGroundingGateContract:
     def test_with_evidence_returns_fact(self) -> None:
@@ -218,6 +221,7 @@ class TestGroundingGateContract:
 # 审计追踪验证
 # ---------------------------------------------------------------------------
 
+
 class TestAuditTraceability:
     def test_adversarial_records_trace_id(self) -> None:
         scenario = _load_scenario("defgeo-ach-001")
@@ -235,7 +239,5 @@ class TestAuditTraceability:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
         ach = analyze_hypothesis(scenario["hypothesis"], assertions, claims)
-        _, _, trace = evaluate_adversarial(
-            ach, assertions, claims, case_uid="case_test"
-        )
+        _, _, trace = evaluate_adversarial(ach, assertions, claims, case_uid="case_test")
         assert "prompt_version" in trace.policy

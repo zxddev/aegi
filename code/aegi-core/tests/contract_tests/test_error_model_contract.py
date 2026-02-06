@@ -1,3 +1,4 @@
+# Author: msq
 """Contract tests for unified error model (task 5.2).
 
 Evidence: openspec/changes/foundation-common-contracts/specs/foundation-common/spec.md

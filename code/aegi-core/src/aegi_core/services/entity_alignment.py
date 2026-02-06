@@ -11,9 +11,13 @@ Evidence:
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from pydantic import BaseModel, Field
+
+import json as _json
+from typing import TYPE_CHECKING
+
+import httpx
 
 from aegi_core.contracts.errors import ProblemDetail
 from aegi_core.contracts.llm_governance import (
@@ -25,6 +29,9 @@ from aegi_core.contracts.llm_governance import (
     grounding_gate,
 )
 from aegi_core.contracts.schemas import SourceClaimV1
+
+if TYPE_CHECKING:
+    from aegi_core.infra.llm_client import LLMClient
 
 UNCERTAINTY_THRESHOLD = 0.7
 
@@ -38,7 +45,7 @@ class EntityLinkV1(BaseModel):
     source_claim_uid: str
     confidence: float
     uncertain: bool = False
-    explanation: Optional[str] = None
+    explanation: str | None = None
 
 
 class AlignEntitiesRequest(BaseModel):
@@ -54,8 +61,8 @@ class AlignEntitiesResponse(BaseModel):
     links: list[EntityLinkV1] = Field(default_factory=list)
     failures: list[ProblemDetail] = Field(default_factory=list)
     trace_id: str
-    llm_result: Optional[LLMInvocationResult] = None
-    degraded: Optional[DegradedOutput] = None
+    llm_result: LLMInvocationResult | None = None
+    degraded: DegradedOutput | None = None
 
 
 def _normalize(text: str) -> str:
@@ -76,18 +83,19 @@ def _generate_candidates(
 async def align_entities(
     claims: list[SourceClaimV1],
     budget_context: BudgetContext,
+    *,
+    llm: LLMClient | None = None,
 ) -> AlignEntitiesResponse:
     """跨语言实体对齐：规则候选生成 + LLM rerank。"""
     trace_id = uuid.uuid4().hex
     links: list[EntityLinkV1] = []
     failures: list[ProblemDetail] = []
-    degraded: Optional[DegradedOutput] = None
+    degraded: DegradedOutput | None = None
 
     model_id = "gpt-4o-mini"
     prompt_version = "entity-align-v1"
 
-    # 审计记录
-    LLMInvocationRequest(
+    invocation_req = LLMInvocationRequest(
         model_id=model_id,
         prompt_version=prompt_version,
         budget_context=budget_context,
@@ -120,10 +128,32 @@ async def align_entities(
                 )
             continue
 
+        # LLM rerank：对候选组整体评分
+        group_score: float | None = None
+        group_explanation = ""
+        if llm is not None and len(group) >= 2:
+            quotes_str = "\n".join(f"- [{c.language or 'und'}] {c.quote[:200]}" for c in group)
+            try:
+                resp = await llm.invoke(
+                    f"Are these text fragments referring to the same entity? "
+                    f'Return JSON: {{"score": 0.0-1.0, "explanation": "..."}}\n\n'
+                    f"{quotes_str}",
+                    request=invocation_req,
+                )
+                parsed = _json.loads(resp["text"].strip())
+                group_score = float(parsed["score"])
+                group_explanation = parsed.get("explanation", "")
+                total_tokens += resp["usage"].get("total_tokens", 0)
+            except (httpx.HTTPError, KeyError, ValueError, _json.JSONDecodeError):
+                pass  # 回退固定分数
+
         for claim in group:
             try:
-                score = 0.85 if len(group) == 2 else 0.6
-                total_tokens += len(claim.quote) // 4
+                score = (
+                    group_score if group_score is not None else (0.85 if len(group) == 2 else 0.6)
+                )
+                if group_score is None:
+                    total_tokens += len(claim.quote) // 4
                 is_uncertain = score < UNCERTAINTY_THRESHOLD
                 grounding = grounding_gate(has_evidence_citation=True)
 
@@ -135,7 +165,7 @@ async def align_entities(
                         source_claim_uid=claim.uid,
                         confidence=round(score, 3),
                         uncertain=is_uncertain,
-                        explanation=f"grounding={grounding.value}",
+                        explanation=group_explanation or f"grounding={grounding.value}",
                     )
                 )
             except Exception as exc:

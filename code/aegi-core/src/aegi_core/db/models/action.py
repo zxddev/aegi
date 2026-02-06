@@ -32,7 +32,6 @@ class Action(Base):
     trace_id: Mapped[str | None] = mapped_column(sa.String(64))
     span_id: Mapped[str | None] = mapped_column(sa.String(64))
 
-
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False
     )

@@ -134,30 +134,42 @@ def generate_forecasts(
         else:
             status = "published"
 
-        forecasts.append(ForecastV1(
-            scenario_id=f"forecast-{uuid.uuid4().hex[:8]}",
-            probability=probability,
-            trigger_conditions=triggers,
-            evidence_citations=hyp_evidence,
-            alternatives=alternatives,
-            grounding_level=grounding,
-            status=status,
-            causal_analysis=causal,
-            signal_scores=signals,
-        ))
+        forecasts.append(
+            ForecastV1(
+                scenario_id=f"forecast-{uuid.uuid4().hex[:8]}",
+                probability=probability,
+                trigger_conditions=triggers,
+                evidence_citations=hyp_evidence,
+                alternatives=alternatives,
+                grounding_level=grounding,
+                status=status,
+                causal_analysis=causal,
+                signal_scores=signals,
+            )
+        )
 
     action = ActionV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid, action_type="forecast_generate",
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_type="forecast_generate",
         rationale=f"Generated {len(forecasts)} forecasts from {len(hypotheses)} hypotheses",
         inputs={"hypothesis_count": len(hypotheses), "assertion_count": len(assertions)},
         outputs={"forecast_count": len(forecasts)},
-        trace_id=_trace_id, span_id=_span_id, created_at=now,
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
     tool_trace = ToolTraceV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid, action_uid=action.uid,
-        tool_name="forecast_generate", request={"hypothesis_count": len(hypotheses)},
-        response={"forecast_count": len(forecasts)}, status="ok",
-        trace_id=_trace_id, span_id=_span_id, created_at=now,
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_uid=action.uid,
+        tool_name="forecast_generate",
+        request={"hypothesis_count": len(hypotheses)},
+        response={"forecast_count": len(forecasts)},
+        status="ok",
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
 
     return forecasts, action, tool_trace

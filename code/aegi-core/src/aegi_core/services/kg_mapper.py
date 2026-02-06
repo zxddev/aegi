@@ -21,11 +21,25 @@ from aegi_core.services.entity import EntityV1
 from aegi_core.services.event import EventV1
 from aegi_core.services.relation import RelationV1
 
-_EVENT_KEYWORDS = frozenset({
-    "deployment", "attack", "meeting", "summit", "exercise",
-    "launch", "withdrawal", "sanction", "agreement", "conflict",
-    "negotiation", "ceasefire", "invasion", "election", "coup",
-})
+_EVENT_KEYWORDS = frozenset(
+    {
+        "deployment",
+        "attack",
+        "meeting",
+        "summit",
+        "exercise",
+        "launch",
+        "withdrawal",
+        "sanction",
+        "agreement",
+        "conflict",
+        "negotiation",
+        "ceasefire",
+        "invasion",
+        "election",
+        "coup",
+    }
+)
 
 _DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 
@@ -88,16 +102,27 @@ def build_graph(
         err = _validate_assertion_schema(a)
         if err:
             action = ActionV1(
-                uid=uuid.uuid4().hex, case_uid=case_uid,
-                action_type="kg_build", rationale=f"Schema mismatch: {err.detail}",
-                inputs={"assertion_uid": a.uid}, outputs={"error": err.model_dump()},
-                trace_id=_trace_id, span_id=_span_id, created_at=now,
+                uid=uuid.uuid4().hex,
+                case_uid=case_uid,
+                action_type="kg_build",
+                rationale=f"Schema mismatch: {err.detail}",
+                inputs={"assertion_uid": a.uid},
+                outputs={"error": err.model_dump()},
+                trace_id=_trace_id,
+                span_id=_span_id,
+                created_at=now,
             )
             tool_trace = ToolTraceV1(
-                uid=uuid.uuid4().hex, case_uid=case_uid, action_uid=action.uid,
-                tool_name="kg_mapper", request={"assertion_uid": a.uid},
-                response={"error": err.model_dump()}, status="rejected",
-                trace_id=_trace_id, span_id=_span_id, created_at=now,
+                uid=uuid.uuid4().hex,
+                case_uid=case_uid,
+                action_uid=action.uid,
+                tool_name="kg_mapper",
+                request={"assertion_uid": a.uid},
+                response={"error": err.model_dump()},
+                status="rejected",
+                trace_id=_trace_id,
+                span_id=_span_id,
+                created_at=now,
             )
             return None, None, None, action, tool_trace, err
 
@@ -112,45 +137,57 @@ def build_graph(
 
         if _is_event_assertion(a):
             event = EventV1(
-                uid=uuid.uuid4().hex, case_uid=case_uid,
+                uid=uuid.uuid4().hex,
+                case_uid=case_uid,
                 label=value.get("rationale", a.kind),
                 event_type=a.kind,
                 timestamp_ref=_extract_timestamp_ref(a),
                 properties=value,
                 source_assertion_uids=[a.uid],
-                ontology_version=ontology_version, created_at=now,
+                ontology_version=ontology_version,
+                created_at=now,
             )
             events.append(event)
 
             if attributed_to and attributed_to not in entity_by_label:
                 ent = EntityV1(
-                    uid=uuid.uuid4().hex, case_uid=case_uid,
-                    label=attributed_to, entity_type="actor",
-                    properties={}, source_assertion_uids=[a.uid],
-                    ontology_version=ontology_version, created_at=now,
+                    uid=uuid.uuid4().hex,
+                    case_uid=case_uid,
+                    label=attributed_to,
+                    entity_type="actor",
+                    properties={},
+                    source_assertion_uids=[a.uid],
+                    ontology_version=ontology_version,
+                    created_at=now,
                 )
                 entities.append(ent)
                 entity_by_label[attributed_to] = ent
 
             if attributed_to and attributed_to in entity_by_label:
                 rel = RelationV1(
-                    uid=uuid.uuid4().hex, case_uid=case_uid,
+                    uid=uuid.uuid4().hex,
+                    case_uid=case_uid,
                     source_entity_uid=entity_by_label[attributed_to].uid,
                     target_entity_uid=event.uid,
                     relation_type="participated_in",
-                    properties={}, source_assertion_uids=[a.uid],
-                    ontology_version=ontology_version, created_at=now,
+                    properties={},
+                    source_assertion_uids=[a.uid],
+                    ontology_version=ontology_version,
+                    created_at=now,
                 )
                 relations.append(rel)
         else:
             if attributed_to:
                 if attributed_to not in entity_by_label:
                     ent = EntityV1(
-                        uid=uuid.uuid4().hex, case_uid=case_uid,
-                        label=attributed_to, entity_type="actor",
+                        uid=uuid.uuid4().hex,
+                        case_uid=case_uid,
+                        label=attributed_to,
+                        entity_type="actor",
                         properties=value,
                         source_assertion_uids=[a.uid],
-                        ontology_version=ontology_version, created_at=now,
+                        ontology_version=ontology_version,
+                        created_at=now,
                     )
                     entities.append(ent)
                     entity_by_label[attributed_to] = ent
@@ -160,21 +197,26 @@ def build_graph(
 
     entity_list = list(entity_by_label.values())
     for i, e1 in enumerate(entity_list):
-        for e2 in entity_list[i + 1:]:
+        for e2 in entity_list[i + 1 :]:
             shared = set(e1.source_assertion_uids) & set(e2.source_assertion_uids)
             if shared:
                 rel = RelationV1(
-                    uid=uuid.uuid4().hex, case_uid=case_uid,
-                    source_entity_uid=e1.uid, target_entity_uid=e2.uid,
+                    uid=uuid.uuid4().hex,
+                    case_uid=case_uid,
+                    source_entity_uid=e1.uid,
+                    target_entity_uid=e2.uid,
                     relation_type="co_mentioned",
                     properties={"shared_assertion_uids": sorted(shared)},
                     source_assertion_uids=sorted(shared),
-                    ontology_version=ontology_version, created_at=now,
+                    ontology_version=ontology_version,
+                    created_at=now,
                 )
                 relations.append(rel)
 
     action = ActionV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid, action_type="kg_build",
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_type="kg_build",
         rationale=(
             f"Built KG: {len(entities)} entities, {len(events)} events, "
             f"{len(relations)} relations from {len(assertions)} assertions"
@@ -185,10 +227,14 @@ def build_graph(
             "event_uids": [e.uid for e in events],
             "relation_uids": [r.uid for r in relations],
         },
-        trace_id=_trace_id, span_id=_span_id, created_at=now,
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
     tool_trace = ToolTraceV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid, action_uid=action.uid,
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_uid=action.uid,
         tool_name="kg_mapper",
         request={"assertion_count": len(assertions), "ontology_version": ontology_version},
         response={
@@ -196,6 +242,9 @@ def build_graph(
             "event_count": len(events),
             "relation_count": len(relations),
         },
-        status="ok", trace_id=_trace_id, span_id=_span_id, created_at=now,
+        status="ok",
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
     return entities, events, relations, action, tool_trace

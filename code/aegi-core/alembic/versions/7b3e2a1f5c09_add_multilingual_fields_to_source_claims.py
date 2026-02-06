@@ -15,21 +15,21 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 
 # revision identifiers, used by Alembic.
-revision: str = '7b3e2a1f5c09'
-down_revision: Union[str, None] = '1dda8adf4f9b'
+revision: str = "7b3e2a1f5c09"
+down_revision: Union[str, None] = "1dda8adf4f9b"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('source_claims', sa.Column('language', sa.String(16), nullable=True))
-    op.add_column('source_claims', sa.Column('original_quote', sa.Text(), nullable=True))
-    op.add_column('source_claims', sa.Column('translation', sa.Text(), nullable=True))
-    op.add_column('source_claims', sa.Column('translation_meta', JSONB, nullable=True))
+    op.add_column("source_claims", sa.Column("language", sa.String(16), nullable=True))
+    op.add_column("source_claims", sa.Column("original_quote", sa.Text(), nullable=True))
+    op.add_column("source_claims", sa.Column("translation", sa.Text(), nullable=True))
+    op.add_column("source_claims", sa.Column("translation_meta", JSONB, nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column('source_claims', 'translation_meta')
-    op.drop_column('source_claims', 'translation')
-    op.drop_column('source_claims', 'original_quote')
-    op.drop_column('source_claims', 'language')
+    op.drop_column("source_claims", "translation_meta")
+    op.drop_column("source_claims", "translation")
+    op.drop_column("source_claims", "original_quote")
+    op.drop_column("source_claims", "language")

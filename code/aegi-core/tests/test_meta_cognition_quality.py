@@ -213,9 +213,7 @@ class TestQuality003PendingInputs:
     def test_consistency_dimension_pending(self) -> None:
         scenario = _load_scenario("defgeo-quality-003")
         report = score_confidence(_build_input(scenario))
-        consistency = next(
-            d for d in report.confidence_breakdown if d.name == "consistency"
-        )
+        consistency = next(d for d in report.confidence_breakdown if d.name == "consistency")
         assert consistency.status == "pending"
 
     def test_blindspots_detected(self) -> None:
@@ -234,7 +232,10 @@ class TestQuality003PendingInputs:
         scenario = _load_scenario("defgeo-quality-003")
         inp = _build_input(scenario)
         items = detect_blindspots(
-            inp.assertions, inp.hypotheses, inp.source_claims, inp.forecasts,
+            inp.assertions,
+            inp.hypotheses,
+            inp.source_claims,
+            inp.forecasts,
         )
         assert any(i.dimension == "upstream_dependency" for i in items)
 
@@ -243,9 +244,7 @@ class TestQuality003PendingInputs:
         scenario = _load_scenario("defgeo-quality-003")
         report = score_confidence(_build_input(scenario))
         assert report.status != "complete"
-        complete_dims = [
-            d for d in report.confidence_breakdown if d.status == "complete"
-        ]
+        complete_dims = [d for d in report.confidence_breakdown if d.status == "complete"]
         if complete_dims:
             expected_avg = sum(d.score for d in complete_dims) / len(complete_dims)
             assert abs(report.confidence_score - round(expected_avg, 4)) < 0.001

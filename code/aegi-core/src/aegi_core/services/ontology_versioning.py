@@ -13,7 +13,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -39,7 +38,7 @@ class CompatibilityReport(BaseModel):
     changes: list[OntologyChange] = Field(default_factory=list)
     overall_level: ChangeLevel
     auto_upgrade_allowed: bool
-    migration_plan: Optional[str] = None
+    migration_plan: str | None = None
 
 
 class OntologyVersion(BaseModel):
@@ -76,18 +75,28 @@ def get_case_pin(case_uid: str) -> str | None:
 
 
 def _compare_type_lists(
-    old: list[str], new: list[str], field: str,
+    old: list[str],
+    new: list[str],
+    field: str,
 ) -> list[OntologyChange]:
     changes: list[OntologyChange] = []
     old_set, new_set = set(old), set(new)
     for removed in sorted(old_set - new_set):
-        changes.append(OntologyChange(
-            field=field, description=f"Removed: {removed}", level=ChangeLevel.BREAKING,
-        ))
+        changes.append(
+            OntologyChange(
+                field=field,
+                description=f"Removed: {removed}",
+                level=ChangeLevel.BREAKING,
+            )
+        )
     for added in sorted(new_set - old_set):
-        changes.append(OntologyChange(
-            field=field, description=f"Added: {added}", level=ChangeLevel.COMPATIBLE,
-        ))
+        changes.append(
+            OntologyChange(
+                field=field,
+                description=f"Added: {added}",
+                level=ChangeLevel.COMPATIBLE,
+            )
+        )
     return changes
 
 
@@ -96,14 +105,18 @@ def compute_compatibility(from_ver: str, to_ver: str) -> CompatibilityReport | P
     new = _registry.get(to_ver)
     if not old:
         return ProblemDetail(
-            type="urn:aegi:error:not_found", title="Version not found",
-            status=404, detail=f"Ontology version {from_ver} not found",
+            type="urn:aegi:error:not_found",
+            title="Version not found",
+            status=404,
+            detail=f"Ontology version {from_ver} not found",
             error_code="not_found",
         )
     if not new:
         return ProblemDetail(
-            type="urn:aegi:error:not_found", title="Version not found",
-            status=404, detail=f"Ontology version {to_ver} not found",
+            type="urn:aegi:error:not_found",
+            title="Version not found",
+            status=404,
+            detail=f"Ontology version {to_ver} not found",
             error_code="not_found",
         )
 
@@ -128,9 +141,12 @@ def compute_compatibility(from_ver: str, to_ver: str) -> CompatibilityReport | P
         migration_plan = f"Manual review required for: {'; '.join(breaking_items)}"
 
     return CompatibilityReport(
-        from_version=from_ver, to_version=to_ver,
-        changes=changes, overall_level=overall,
-        auto_upgrade_allowed=auto_allowed, migration_plan=migration_plan,
+        from_version=from_ver,
+        to_version=to_ver,
+        changes=changes,
+        overall_level=overall,
+        auto_upgrade_allowed=auto_allowed,
+        migration_plan=migration_plan,
     )
 
 
@@ -161,18 +177,27 @@ def upgrade_ontology(
     report = compute_compatibility(from_version, to_version)
     if isinstance(report, ProblemDetail):
         action = ActionV1(
-            uid=uuid.uuid4().hex, case_uid=case_uid,
-            action_type="ontology_upgrade", rationale=report.detail or "Version not found",
+            uid=uuid.uuid4().hex,
+            case_uid=case_uid,
+            action_type="ontology_upgrade",
+            rationale=report.detail or "Version not found",
             inputs={"from_version": from_version, "to_version": to_version},
             outputs={"error": report.model_dump()},
-            trace_id=_trace_id, span_id=_span_id, created_at=now,
+            trace_id=_trace_id,
+            span_id=_span_id,
+            created_at=now,
         )
         tool_trace = ToolTraceV1(
-            uid=uuid.uuid4().hex, case_uid=case_uid, action_uid=action.uid,
+            uid=uuid.uuid4().hex,
+            case_uid=case_uid,
+            action_uid=action.uid,
             tool_name="ontology_versioning",
             request={"from_version": from_version, "to_version": to_version},
-            response={"error": report.model_dump()}, status="rejected",
-            trace_id=_trace_id, span_id=_span_id, created_at=now,
+            response={"error": report.model_dump()},
+            status="rejected",
+            trace_id=_trace_id,
+            span_id=_span_id,
+            created_at=now,
         )
         return report, action, tool_trace
 
@@ -185,37 +210,53 @@ def upgrade_ontology(
             error_code="upgrade_denied",
         )
         action = ActionV1(
-            uid=uuid.uuid4().hex, case_uid=case_uid,
+            uid=uuid.uuid4().hex,
+            case_uid=case_uid,
             action_type="ontology_upgrade",
             rationale="Denied: breaking upgrade without approval",
             inputs={"from_version": from_version, "to_version": to_version, "approved": False},
             outputs={"denied": True, "report": report.model_dump()},
-            trace_id=_trace_id, span_id=_span_id, created_at=now,
+            trace_id=_trace_id,
+            span_id=_span_id,
+            created_at=now,
         )
         tool_trace = ToolTraceV1(
-            uid=uuid.uuid4().hex, case_uid=case_uid, action_uid=action.uid,
+            uid=uuid.uuid4().hex,
+            case_uid=case_uid,
+            action_uid=action.uid,
             tool_name="ontology_versioning",
             request={"from_version": from_version, "to_version": to_version},
-            response={"denied": True}, status="denied",
-            trace_id=_trace_id, span_id=_span_id, created_at=now,
+            response={"denied": True},
+            status="denied",
+            trace_id=_trace_id,
+            span_id=_span_id,
+            created_at=now,
         )
         return deny, action, tool_trace
 
     pin_case(case_uid, to_version)
 
     action = ActionV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid,
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
         action_type="ontology_upgrade",
         rationale=f"Upgraded {from_version} -> {to_version} ({report.overall_level.value})",
         inputs={"from_version": from_version, "to_version": to_version, "approved": approved},
         outputs={"report": report.model_dump()},
-        trace_id=_trace_id, span_id=_span_id, created_at=now,
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
     tool_trace = ToolTraceV1(
-        uid=uuid.uuid4().hex, case_uid=case_uid, action_uid=action.uid,
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_uid=action.uid,
         tool_name="ontology_versioning",
         request={"from_version": from_version, "to_version": to_version},
-        response={"overall_level": report.overall_level.value}, status="ok",
-        trace_id=_trace_id, span_id=_span_id, created_at=now,
+        response={"overall_level": report.overall_level.value},
+        status="ok",
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
     )
     return report, action, tool_trace

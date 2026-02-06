@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY aegi-core/pyproject.toml aegi-core/
+COPY aegi-core/src/ aegi-core/src/
+
+RUN pip install --no-cache-dir ./aegi-core
+
+EXPOSE 8700
+
+CMD ["uvicorn", "aegi_core.api.main:app", "--host", "0.0.0.0", "--port", "8700"]

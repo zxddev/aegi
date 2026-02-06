@@ -1,0 +1,23 @@
+{
+  "name": "dev",
+  "description": "aegi 项目主开发 agent，集成 serena MCP 和 superpowers skills",
+  "prompt": "file://KIRO.md",
+  "tools": ["fs_read", "fs_write", "execute_bash", "grep", "glob", "code"],
+  "allowedTools": ["fs_read", "grep", "glob", "code"],
+  "toolsSettings": {
+    "execute_bash": {
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://KIRO.md",
+    "file://README.md",
+    "skill://.kiro/skills/**/SKILL.md"
+  ],
+  "mcpServers": {
+    "serena": {
+      "command": "uvx",
+      "args": ["serena-mcp", "--project-dir", "/home/user/workspace/gitcode/aegi"]
+    }
+  }
+}

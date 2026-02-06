@@ -1,3 +1,4 @@
+# Author: msq
 """Contract tests for shared schemas (task 5.1).
 
 Evidence: openspec/changes/foundation-common-contracts/specs/foundation-common/spec.md
@@ -20,6 +21,7 @@ _NOW = datetime.now(timezone.utc)
 
 
 # -- SourceClaimV1 -------------------------------------------------------------
+
 
 def test_source_claim_v1_minimal():
     sc = SourceClaimV1(
@@ -56,6 +58,7 @@ def test_source_claim_v1_multimodal():
 
 # -- AssertionV1 ---------------------------------------------------------------
 
+
 def test_assertion_v1_roundtrip():
     a = AssertionV1(
         uid="a-1",
@@ -72,6 +75,7 @@ def test_assertion_v1_roundtrip():
 
 # -- HypothesisV1 --------------------------------------------------------------
 
+
 def test_hypothesis_v1_roundtrip():
     h = HypothesisV1(
         uid="h-1",
@@ -86,6 +90,7 @@ def test_hypothesis_v1_roundtrip():
 
 
 # -- NarrativeV1 ---------------------------------------------------------------
+
 
 def test_narrative_v1_roundtrip():
     n = NarrativeV1(
@@ -103,11 +108,13 @@ def test_narrative_v1_roundtrip():
 
 # -- Modality enum covers all required values (task 4.1) -----------------------
 
+
 def test_modality_enum_values():
     assert set(Modality) == {Modality.TEXT, Modality.IMAGE, Modality.VIDEO, Modality.AUDIO}
 
 
 # -- Multimodal fields are nullable (task 4.2) ---------------------------------
+
 
 def test_multimodal_fields_nullable():
     sc = SourceClaimV1(

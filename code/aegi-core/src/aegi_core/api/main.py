@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+# Author: msq
+from contextlib import asynccontextmanager
 
-from fastapi import Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -24,7 +25,25 @@ from aegi_core.api.routes.orchestration import router as orchestration_router
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="aegi-core", version="0.0.0")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # startup
+        from aegi_core.api.deps import get_neo4j_store, get_qdrant_store, get_minio_store
+
+        neo = get_neo4j_store()
+        await neo.connect()
+        await neo.ensure_indexes()
+        qdrant = get_qdrant_store()
+        await qdrant.connect()
+        minio = get_minio_store()
+        await minio.connect()
+        yield
+        # shutdown
+        await neo.close()
+        await qdrant.close()
+        await minio.close()
+
+    app = FastAPI(title="aegi-core", version="0.0.0", lifespan=lifespan)
 
     app.include_router(cases_router)
     app.include_router(artifacts_router)

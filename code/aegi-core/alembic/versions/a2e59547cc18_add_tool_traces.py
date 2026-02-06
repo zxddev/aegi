@@ -1,3 +1,4 @@
+# Author: msq
 """add tool_traces
 
 Revision ID: a2e59547cc18
@@ -8,13 +9,10 @@ Create Date: 2026-02-05 23:14:05.007375
 
 from typing import Sequence, Union
 
-from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
-revision: str = 'a2e59547cc18'
-down_revision: Union[str, None] = '01195e08d027'
+revision: str = "a2e59547cc18"
+down_revision: Union[str, None] = "01195e08d027"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

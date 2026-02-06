@@ -11,9 +11,12 @@ Evidence:
 from __future__ import annotations
 
 import uuid
-from typing import Optional
+
+import httpx
 
 from pydantic import BaseModel, Field
+
+from typing import TYPE_CHECKING
 
 from aegi_core.contracts.errors import ProblemDetail
 from aegi_core.contracts.llm_governance import (
@@ -25,6 +28,9 @@ from aegi_core.contracts.llm_governance import (
     grounding_gate,
 )
 from aegi_core.contracts.schemas import SourceClaimV1
+
+if TYPE_CHECKING:
+    from aegi_core.infra.llm_client import LLMClient
 
 
 # -- Request / Response models -------------------------------------------------
@@ -77,8 +83,8 @@ class TranslateClaimsResponse(BaseModel):
     results: list[TranslatedClaim] = Field(default_factory=list)
     failures: list[ProblemDetail] = Field(default_factory=list)
     trace_id: str
-    llm_result: Optional[LLMInvocationResult] = None
-    degraded: Optional[DegradedOutput] = None
+    llm_result: LLMInvocationResult | None = None
+    degraded: DegradedOutput | None = None
 
 
 # -- Rule-based language detection ---------------------------------------------
@@ -110,11 +116,16 @@ def _rule_detect(text: str) -> tuple[str, float]:
     return (best, round(conf, 3))
 
 
+_LOW_CONFIDENCE_THRESHOLD = 0.3
+
+
 # -- Service -------------------------------------------------------------------
 
 
 async def detect_language(
     claims: list[SourceClaimV1],
+    *,
+    llm: LLMClient | None = None,
 ) -> DetectLanguageResponse:
     """检测 claims 语言。规则优先，低置信回退 LLM（当前 LLM 路径为占位）。"""
     trace_id = uuid.uuid4().hex
@@ -124,6 +135,18 @@ async def detect_language(
     for claim in claims:
         try:
             lang, conf = _rule_detect(claim.quote)
+            # 低置信时回退 LLM
+            if conf < _LOW_CONFIDENCE_THRESHOLD and llm is not None:
+                try:
+                    resp = await llm.invoke(
+                        f"What language is this text? Return only the ISO 639-1 code.\n\n"
+                        f"{claim.quote[:500]}",
+                    )
+                    code = resp["text"].strip().lower()[:2]
+                    if len(code) == 2 and code.isalpha():
+                        lang, conf = code, 0.8
+                except (httpx.HTTPError, KeyError, ValueError):
+                    pass  # 保留规则结果
             results.append(
                 DetectLanguageResult(claim_uid=claim.uid, language=lang, confidence=conf)
             )
@@ -146,6 +169,8 @@ async def translate_claims(
     claims: list[SourceClaimV1],
     target_language: str,
     budget_context: BudgetContext,
+    *,
+    llm: LLMClient | None = None,
 ) -> TranslateClaimsResponse:
     """翻译 claims 到目标语言。所有 LLM 调用经过 governance。
 
@@ -154,13 +179,12 @@ async def translate_claims(
     trace_id = uuid.uuid4().hex
     results: list[TranslatedClaim] = []
     failures: list[ProblemDetail] = []
-    degraded: Optional[DegradedOutput] = None
+    degraded: DegradedOutput | None = None
 
     model_id = "gpt-4o-mini"
     prompt_version = "translate-v1"
 
-    # 审计记录
-    LLMInvocationRequest(
+    invocation_req = LLMInvocationRequest(
         model_id=model_id,
         prompt_version=prompt_version,
         budget_context=budget_context,
@@ -198,9 +222,23 @@ async def translate_claims(
                 )
                 continue
 
-            # 占位 LLM 翻译（生产环境替换为真实调用）
-            translated_text = f"[translated:{target_language}] {claim.quote}"
-            est_tokens = len(claim.quote) // 2
+            # LLM 翻译（无 LLM 时回退占位）
+            if llm is not None:
+                try:
+                    resp = await llm.invoke(
+                        f"Translate the following text to {target_language}. "
+                        f"Return only the translation, nothing else.\n\n"
+                        f"{claim.quote}",
+                        request=invocation_req,
+                    )
+                    translated_text = resp["text"].strip()
+                    est_tokens = resp["usage"].get("total_tokens", len(claim.quote) // 2)
+                except (httpx.HTTPError, KeyError):
+                    translated_text = f"[translated:{target_language}] {claim.quote}"
+                    est_tokens = len(claim.quote) // 2
+            else:
+                translated_text = f"[translated:{target_language}] {claim.quote}"
+                est_tokens = len(claim.quote) // 2
             total_tokens += est_tokens
             grounding = grounding_gate(has_evidence_citation=True)
 

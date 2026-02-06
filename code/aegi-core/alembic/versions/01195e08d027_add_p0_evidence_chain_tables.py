@@ -1,3 +1,4 @@
+# Author: msq
 """add p0 evidence chain tables
 
 Revision ID: 01195e08d027
@@ -8,13 +9,10 @@ Create Date: 2026-02-05 22:01:46.576440
 
 from typing import Sequence, Union
 
-from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
-revision: str = '01195e08d027'
-down_revision: Union[str, None] = '3f52046a1239'
+revision: str = "01195e08d027"
+down_revision: Union[str, None] = "3f52046a1239"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

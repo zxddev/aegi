@@ -10,7 +10,6 @@ Evidence:
 
 from __future__ import annotations
 
-from typing import Optional
 from uuid import uuid4
 
 import sqlalchemy as sa
@@ -18,25 +17,24 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aegi_core.api.deps import get_db_session
+from aegi_core.api.deps import get_db_session, get_llm_client, get_qdrant_store
 from aegi_core.api.errors import AegiHTTPError, not_found
 from aegi_core.contracts.llm_governance import GroundingLevel
 from aegi_core.db.models.action import Action
 from aegi_core.db.models.case import Case
 from aegi_core.db.models.source_claim import SourceClaim
+from aegi_core.infra.llm_client import LLMClient
+from aegi_core.infra.qdrant_store import QdrantStore
 from aegi_core.services.answer_renderer import EvidenceCitation, render_answer
 from aegi_core.services.query_planner import RiskFlag, plan_query
 
 router = APIRouter(prefix="/cases", tags=["chat"])
 
-# -- 内存存储（P1 阶段，无新 DB 表） ------------------------------------------
-_trace_store: dict[str, dict] = {}
-
 
 class ChatRequestIn(BaseModel):
     question: str
-    time_range: Optional[dict] = None
-    language: Optional[str] = None
+    time_range: dict | None = None
+    language: str | None = None
 
 
 @router.post("/{case_uid}/analysis/chat")
@@ -44,6 +42,8 @@ async def chat(
     case_uid: str,
     body: ChatRequestIn,
     session: AsyncSession = Depends(get_db_session),
+    llm: LLMClient = Depends(get_llm_client),
+    qdrant: QdrantStore = Depends(get_qdrant_store),
 ) -> dict:
     case = await session.get(Case, case_uid)
     if case is None:
@@ -59,17 +59,32 @@ async def chat(
         language=body.language,
     )
 
-    # 2) 检索 source claims
-    result = await session.execute(sa.select(SourceClaim).where(SourceClaim.case_uid == case_uid))
-    claims = result.scalars().all()
-
-    # 3) 简单关键词匹配（P1）
-    keywords = body.question.lower().split()
+    # 2) 语义检索：embed 问题 → Qdrant 搜索 → 反查 SourceClaim
     matched: list[SourceClaim] = []
-    for sc in claims:
-        quote_lower = (sc.quote or "").lower()
-        if any(kw in quote_lower for kw in keywords if len(kw) > 2):
-            matched.append(sc)
+    try:
+        embedding = await llm.embed(body.question)
+        hits = await qdrant.search(embedding, limit=10, score_threshold=0.3)
+        if hits:
+            hit_chunk_uids = [h.chunk_uid for h in hits]
+            rows = await session.execute(
+                sa.select(SourceClaim).where(
+                    SourceClaim.case_uid == case_uid,
+                    SourceClaim.chunk_uid.in_(hit_chunk_uids),
+                )
+            )
+            matched = list(rows.scalars().all())
+    except Exception:  # noqa: BLE001 — Qdrant/embedding 不可用时降级
+        pass
+
+    # 3) 降级：语义检索无结果时回退关键词匹配
+    if not matched:
+        rows = await session.execute(sa.select(SourceClaim).where(SourceClaim.case_uid == case_uid))
+        all_claims = rows.scalars().all()
+        keywords = body.question.lower().split()
+        for sc in all_claims:
+            quote_lower = (sc.quote or "").lower()
+            if any(kw in quote_lower for kw in keywords if len(kw) > 2):
+                matched.append(sc)
 
     # 4) 构建 citations
     citations = [
@@ -97,7 +112,14 @@ async def chat(
         trace_id=trace_id,
     )
 
-    # 7) 记录 action
+    # 7) 记录 action + trace 持久化（存入 Action.outputs）
+    trace_data = {
+        "trace_id": trace_id,
+        "case_uid": case_uid,
+        "query_plan": plan.model_dump(),
+        "citations": [c.model_dump() for c in citations],
+        "answer": answer.model_dump(),
+    }
     action_uid = f"act_{uuid4().hex}"
     session.add(
         Action(
@@ -105,19 +127,11 @@ async def chat(
             case_uid=case_uid,
             action_type="analysis.chat",
             inputs=body.model_dump(exclude_none=True),
-            outputs={"trace_id": trace_id, "answer_type": answer.answer_type.value},
+            outputs=trace_data,
+            trace_id=trace_id,
         )
     )
     await session.commit()
-
-    # 8) 存储 trace（P1 内存）
-    _trace_store[trace_id] = {
-        "trace_id": trace_id,
-        "case_uid": case_uid,
-        "query_plan": plan.model_dump(),
-        "citations": [c.model_dump() for c in citations],
-        "answer": answer.model_dump(),
-    }
 
     return answer.model_dump()
 
@@ -132,8 +146,16 @@ async def get_chat_trace(
     if case is None:
         raise not_found("Case", case_uid)
 
-    trace = _trace_store.get(trace_id)
-    if trace is None or trace.get("case_uid") != case_uid:
+    # 从 Action 表读取持久化的 trace
+    row = await session.execute(
+        sa.select(Action).where(
+            Action.case_uid == case_uid,
+            Action.action_type == "analysis.chat",
+            Action.trace_id == trace_id,
+        )
+    )
+    action = row.scalars().first()
+    if action is None or not action.outputs:
         raise AegiHTTPError(404, "trace_not_found", "Chat trace not found", {"trace_id": trace_id})
 
-    return trace
+    return action.outputs
