@@ -1,9 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
+  "fixture_naming_convention": "defgeo-<domain>-<scenario>-<nnn>",
   "fixtures": [
     {
       "fixture_id": "defgeo-001",
       "domain": "defense-geopolitics",
+      "scenario_type": "html_extraction",
+      "aliases": ["defgeo-defense-geopolitics-html-001"],
       "artifact": {
         "kind": "html",
         "path": "defense-geopolitics/defgeo-001/artifact.html"
@@ -15,6 +18,8 @@
     {
       "fixture_id": "defgeo-002",
       "domain": "defense-geopolitics",
+      "scenario_type": "pdf_extraction",
+      "aliases": ["defgeo-defense-geopolitics-pdf-002"],
       "artifact": {
         "kind": "pdf",
         "path": "defense-geopolitics/defgeo-002/artifact.pdf"
