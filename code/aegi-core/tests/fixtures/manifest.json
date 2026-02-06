@@ -60,6 +60,27 @@
       "scenario_type": "chat_unanswerable",
       "aliases": ["defgeo-defense-geopolitics-chat-unanswerable-002"],
       "chat_scenario_path": "defense-geopolitics/defgeo-chat-002/chat_scenario.json"
+    },
+    {
+      "fixture_id": "defgeo-narrative-001",
+      "domain": "defense-geopolitics",
+      "scenario_type": "narrative_natural_propagation",
+      "aliases": ["defgeo-defense-geopolitics-narrative-natural-001"],
+      "source_claims_path": "defense-geopolitics/defgeo-narrative-001/source_claims.json"
+    },
+    {
+      "fixture_id": "defgeo-narrative-002",
+      "domain": "defense-geopolitics",
+      "scenario_type": "narrative_coordinated_propagation",
+      "aliases": ["defgeo-defense-geopolitics-narrative-coordinated-002"],
+      "source_claims_path": "defense-geopolitics/defgeo-narrative-002/source_claims.json"
+    },
+    {
+      "fixture_id": "defgeo-narrative-003",
+      "domain": "defense-geopolitics",
+      "scenario_type": "narrative_conflicting_coexist",
+      "aliases": ["defgeo-defense-geopolitics-narrative-conflicting-003"],
+      "source_claims_path": "defense-geopolitics/defgeo-narrative-003/source_claims.json"
     }
   ]
 }

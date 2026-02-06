@@ -1,0 +1,35 @@
+[
+  {
+    "uid": "sc-nar-001-a",
+    "case_uid": "case-nar-001",
+    "artifact_version_uid": "av-001",
+    "chunk_uid": "ch-001",
+    "evidence_uid": "ev-001",
+    "quote": "Country X deployed naval assets to the disputed strait",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "deployed naval assets"}],
+    "attributed_to": "source-alpha",
+    "created_at": "2025-06-01T08:00:00Z"
+  },
+  {
+    "uid": "sc-nar-001-b",
+    "case_uid": "case-nar-001",
+    "artifact_version_uid": "av-002",
+    "chunk_uid": "ch-002",
+    "evidence_uid": "ev-002",
+    "quote": "Naval forces from Country X were observed near the strait",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "Naval forces"}],
+    "attributed_to": "source-beta",
+    "created_at": "2025-06-03T14:00:00Z"
+  },
+  {
+    "uid": "sc-nar-001-c",
+    "case_uid": "case-nar-001",
+    "artifact_version_uid": "av-003",
+    "chunk_uid": "ch-003",
+    "evidence_uid": "ev-003",
+    "quote": "Satellite imagery confirms Country X naval presence in strait region",
+    "selectors": [{"type": "TextQuoteSelector", "exact": "naval presence"}],
+    "attributed_to": "source-gamma",
+    "created_at": "2025-06-05T10:00:00Z"
+  }
+]
