@@ -153,6 +153,60 @@
                 "defgeo-defense-geopolitics-ach-insufficient-003"
             ],
             "scenario_path": "defense-geopolitics/defgeo-ach-003/scenario.json"
+        },
+        {
+            "fixture_id": "defgeo-forecast-001",
+            "domain": "defense-geopolitics",
+            "scenario_type": "forecast_explainable_warning",
+            "aliases": [
+                "defgeo-defense-geopolitics-forecast-warning-001"
+            ],
+            "scenario_path": "defense-geopolitics/defgeo-forecast-001/scenario.json"
+        },
+        {
+            "fixture_id": "defgeo-forecast-002",
+            "domain": "defense-geopolitics",
+            "scenario_type": "forecast_conflicting_signals",
+            "aliases": [
+                "defgeo-defense-geopolitics-forecast-conflict-002"
+            ],
+            "scenario_path": "defense-geopolitics/defgeo-forecast-002/scenario.json"
+        },
+        {
+            "fixture_id": "defgeo-forecast-003",
+            "domain": "defense-geopolitics",
+            "scenario_type": "forecast_insufficient_evidence",
+            "aliases": [
+                "defgeo-defense-geopolitics-forecast-degraded-003"
+            ],
+            "scenario_path": "defense-geopolitics/defgeo-forecast-003/scenario.json"
+        },
+        {
+            "fixture_id": "defgeo-quality-001",
+            "domain": "defense-geopolitics",
+            "scenario_type": "quality_full_scoring",
+            "aliases": [
+                "defgeo-defense-geopolitics-quality-full-001"
+            ],
+            "scenario_path": "defense-geopolitics/defgeo-quality-001/scenario.json"
+        },
+        {
+            "fixture_id": "defgeo-quality-002",
+            "domain": "defense-geopolitics",
+            "scenario_type": "quality_bias_detection",
+            "aliases": [
+                "defgeo-defense-geopolitics-quality-bias-002"
+            ],
+            "scenario_path": "defense-geopolitics/defgeo-quality-002/scenario.json"
+        },
+        {
+            "fixture_id": "defgeo-quality-003",
+            "domain": "defense-geopolitics",
+            "scenario_type": "quality_blindspot_pending",
+            "aliases": [
+                "defgeo-defense-geopolitics-quality-blindspot-003"
+            ],
+            "scenario_path": "defense-geopolitics/defgeo-quality-003/scenario.json"
         }
     ]
 }

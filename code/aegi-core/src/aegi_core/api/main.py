@@ -18,6 +18,8 @@ from aegi_core.api.routes.chat import router as chat_router
 from aegi_core.api.routes.kg import router as kg_router
 from aegi_core.api.routes.hypotheses import router as hypotheses_router
 from aegi_core.api.routes.narratives import router as narratives_router
+from aegi_core.api.routes.forecast import router as forecast_router
+from aegi_core.api.routes.quality import router as quality_router
 
 
 def create_app() -> FastAPI:
@@ -35,6 +37,8 @@ def create_app() -> FastAPI:
     app.include_router(kg_router)
     app.include_router(hypotheses_router)
     app.include_router(narratives_router)
+    app.include_router(forecast_router)
+    app.include_router(quality_router)
 
     @app.exception_handler(AegiHTTPError)
     async def aegi_http_error_handler(request: Request, exc: AegiHTTPError) -> JSONResponse:
