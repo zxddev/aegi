@@ -1,0 +1,20 @@
+{
+  "description": "Ontology upgrade – compatible",
+  "versions": {
+    "1.0.0": {
+      "entity_types": ["actor", "location"],
+      "event_types": ["deployment"],
+      "relation_types": ["participated_in", "co_mentioned"]
+    },
+    "1.1.0": {
+      "entity_types": ["actor", "location", "organization"],
+      "event_types": ["deployment", "summit"],
+      "relation_types": ["participated_in", "co_mentioned", "allied_with"]
+    }
+  },
+  "expected": {
+    "overall_level": "compatible",
+    "auto_upgrade_allowed": true,
+    "breaking_count": 0
+  }
+}
