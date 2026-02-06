@@ -16,6 +16,8 @@ from aegi_core.api.routes.pipelines import router as pipelines_router
 from aegi_core.api.routes.tool_traces import router as tool_traces_router
 from aegi_core.api.routes.chat import router as chat_router
 from aegi_core.api.routes.kg import router as kg_router
+from aegi_core.api.routes.hypotheses import router as hypotheses_router
+from aegi_core.api.routes.narratives import router as narratives_router
 
 
 def create_app() -> FastAPI:
@@ -31,6 +33,8 @@ def create_app() -> FastAPI:
     app.include_router(pipelines_router)
     app.include_router(chat_router)
     app.include_router(kg_router)
+    app.include_router(hypotheses_router)
+    app.include_router(narratives_router)
 
     @app.exception_handler(AegiHTTPError)
     async def aegi_http_error_handler(request: Request, exc: AegiHTTPError) -> JSONResponse:
