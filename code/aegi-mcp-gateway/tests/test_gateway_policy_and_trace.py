@@ -19,7 +19,8 @@ def _clear_traces() -> None:
 def test_archive_url_denied_by_default_returns_structured_error_and_records_trace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("AEGI_GATEWAY_ALLOW_DOMAINS", raising=False)
+    # 设置白名单但不包含目标域名 → 拒绝
+    monkeypatch.setenv("AEGI_GATEWAY_ALLOW_DOMAINS", "other.com")
 
     client = TestClient(app)
     resp = client.post("/tools/archive_url", json={"url": "https://example.com"})

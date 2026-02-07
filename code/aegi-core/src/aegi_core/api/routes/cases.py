@@ -12,6 +12,8 @@ from aegi_core.services import (
     case_service,
     fixture_import_service,
     tool_archive_service,
+    tool_parse_service,
+    tool_search_service,
 )
 from aegi_core.services.tool_client import ToolClient
 
@@ -34,6 +36,19 @@ class FixtureImportIn(BaseModel):
 
 class ToolArchiveUrlIn(BaseModel):
     url: str
+    actor_id: str | None = None
+    rationale: str | None = None
+
+
+class ToolMetaSearchIn(BaseModel):
+    q: str
+    actor_id: str | None = None
+    rationale: str | None = None
+
+
+class ToolDocParseIn(BaseModel):
+    artifact_version_uid: str
+    file_url: str
     actor_id: str | None = None
     rationale: str | None = None
 
@@ -80,6 +95,43 @@ async def call_tool_archive_url(
         tool,
         case_uid=case_uid,
         url=body.url,
+        actor_id=body.actor_id,
+        rationale=body.rationale,
+        inputs=body.model_dump(exclude_none=True),
+    )
+
+
+@router.post("/{case_uid}/tools/meta_search")
+async def call_tool_meta_search(
+    case_uid: str,
+    body: ToolMetaSearchIn,
+    session: AsyncSession = Depends(get_db_session),
+    tool: ToolClient = Depends(get_tool_client),
+) -> dict:
+    return await tool_search_service.call_tool_meta_search(
+        session,
+        tool,
+        case_uid=case_uid,
+        q=body.q,
+        actor_id=body.actor_id,
+        rationale=body.rationale,
+        inputs=body.model_dump(exclude_none=True),
+    )
+
+
+@router.post("/{case_uid}/tools/doc_parse")
+async def call_tool_doc_parse(
+    case_uid: str,
+    body: ToolDocParseIn,
+    session: AsyncSession = Depends(get_db_session),
+    tool: ToolClient = Depends(get_tool_client),
+) -> dict:
+    return await tool_parse_service.call_tool_doc_parse(
+        session,
+        tool,
+        case_uid=case_uid,
+        artifact_version_uid=body.artifact_version_uid,
+        file_url=body.file_url,
         actor_id=body.actor_id,
         rationale=body.rationale,
         inputs=body.model_dump(exclude_none=True),

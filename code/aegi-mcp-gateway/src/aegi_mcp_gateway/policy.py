@@ -42,7 +42,8 @@ def evaluate_outbound_url(tool_name: str, url: str, settings: Settings) -> Polic
             robots=_robots_metadata(),
         )
 
-    if domain not in settings.allow_domains:
+    # allow_domains 为空 → 允许所有域名（开发模式）
+    if settings.allow_domains and domain not in settings.allow_domains:
         return PolicyDecision(
             allowed=False,
             error_code="policy_denied",

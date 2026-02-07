@@ -40,8 +40,8 @@ def test_tools_archive_url_has_ok_field(monkeypatch: pytest.MonkeyPatch) -> None
     assert "ok" in body
 
 
-def test_tools_archive_url_denied_without_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AEGI_GATEWAY_ALLOW_DOMAINS", raising=False)
+def test_tools_archive_url_denied_when_domain_not_in_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AEGI_GATEWAY_ALLOW_DOMAINS", "other.com")
 
     client = TestClient(app)
     resp = client.post("/tools/archive_url", json={"url": "https://example.com"})
