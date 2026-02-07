@@ -143,14 +143,29 @@ class PipelineOrchestrator:
             assertions,
             result,
         )
-        hypotheses, result = self._stage_hypothesis_sync(
-            active,
-            case_uid,
-            assertions,
-            source_claims,
-            hypotheses,
-            result,
-        )
+        # hypothesis_analyze — sync 模式下 skip（需要 LLM）
+        if "hypothesis_analyze" in active:
+            if hypotheses is not None:
+                result.stages.append(
+                    StageResult(
+                        stage="hypothesis_analyze",
+                        status="skipped",
+                        duration_ms=0,
+                        output=hypotheses,
+                    )
+                )
+            else:
+                result.stages.append(
+                    StageResult(
+                        stage="hypothesis_analyze",
+                        status="skipped",
+                        duration_ms=0,
+                        output=[],
+                    )
+                )
+                hypotheses = []
+        if hypotheses is None:
+            hypotheses = []
         # narrative_build (sync)
         narratives, result = self._stage_narrative(
             active, source_claims, narratives, result
@@ -218,7 +233,7 @@ class PipelineOrchestrator:
             result,
         )
 
-        # hypothesis_analyze — use LLM if available
+        # hypothesis_analyze — 必须有 LLM，不降级
         if "hypothesis_analyze" in active:
             if hypotheses is not None:
                 result.stages.append(
@@ -247,14 +262,16 @@ class PipelineOrchestrator:
                 hypotheses = sr.output if sr.status == "success" and sr.output else []
                 result.stages.append(sr)
             else:
-                hypotheses, result = self._stage_hypothesis_sync(
-                    active,
-                    case_uid,
-                    assertions,
-                    source_claims,
-                    hypotheses,
-                    result,
+                # 无 LLM = hard error，不 fallback 到规则引擎
+                result.stages.append(
+                    StageResult(
+                        stage="hypothesis_analyze",
+                        status="error",
+                        duration_ms=0,
+                        output=None,
+                    )
                 )
+                hypotheses = []
         if hypotheses is None:
             hypotheses = []
 
@@ -314,11 +331,10 @@ class PipelineOrchestrator:
         source_claims: list[SourceClaimV1],
         case_uid: str,
     ) -> list[HypothesisV1]:
-        """Use LLM to generate hypotheses, then run ACH analysis."""
-        # Build a concise evidence summary for the LLM
-        evidence_lines = []
-        for a in assertions[:20]:
-            evidence_lines.append(f"- [{a.kind}] {a.value}")
+        """用 LLM 生成假设并执行 LLM ACH 分析。"""
+        assert self._llm is not None  # noqa: S101
+        # 构建证据摘要
+        evidence_lines = [f"- [{a.kind}] {a.value}" for a in assertions[:20]]
         evidence_text = "\n".join(evidence_lines)
 
         prompt = (
@@ -331,9 +347,8 @@ class PipelineOrchestrator:
         result = await self._llm.invoke(prompt, model="default")
         text = result.get("text", "")
 
-        # Parse hypotheses from LLM output
+        # 解析 LLM 输出的假设文本
         hypotheses: list[HypothesisV1] = []
-
         for line in text.strip().split("\n"):
             line = line.strip()
             if line.startswith("H:"):
@@ -345,20 +360,14 @@ class PipelineOrchestrator:
             if not h_text:
                 continue
 
-            # Run ACH analysis on each hypothesis
-            ach = hypothesis_engine.analyze_hypothesis(
-                h_text, assertions, source_claims
+            # 用 LLM 执行 ACH 分析（替代规则引擎）
+            ach = await hypothesis_engine.analyze_hypothesis_llm(
+                h_text, assertions, llm=self._llm
             )
             hypotheses.append(_ach_to_hypothesis(ach, case_uid))
 
-        # Fallback: if LLM didn't produce usable hypotheses, use rule-based
         if not hypotheses:
-            ach = hypothesis_engine.analyze_hypothesis(
-                "Auto-generated hypothesis from assertions",
-                assertions,
-                source_claims,
-            )
-            hypotheses.append(_ach_to_hypothesis(ach, case_uid))
+            raise RuntimeError("LLM 未能生成有效假设")
 
         return hypotheses
 
@@ -446,33 +455,6 @@ class PipelineOrchestrator:
             lambda: assertion_fuser.fuse_claims(source_claims, case_uid=case_uid),
             result,
             unpack_first=True,
-        )
-
-    def _stage_hypothesis_sync(
-        self,
-        active: list[str],
-        case_uid: str,
-        assertions: list[AssertionV1],
-        source_claims: list[SourceClaimV1],
-        hypotheses: list[HypothesisV1] | None,
-        result: PipelineResult,
-    ) -> tuple[list[HypothesisV1], PipelineResult]:
-        return self._run_or_skip(
-            active,
-            "hypothesis_analyze",
-            hypotheses,
-            assertions,
-            lambda: [
-                _ach_to_hypothesis(r, case_uid)
-                for r in [
-                    hypothesis_engine.analyze_hypothesis(
-                        "Auto-generated hypothesis from assertions",
-                        assertions,
-                        source_claims,
-                    )
-                ]
-            ],
-            result,
         )
 
     def _stage_narrative(

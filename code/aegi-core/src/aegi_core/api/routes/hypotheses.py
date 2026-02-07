@@ -26,9 +26,9 @@ from aegi_core.db.models.action import Action
 from aegi_core.db.models.assertion import Assertion
 from aegi_core.db.models.hypothesis import Hypothesis
 from aegi_core.db.models.source_claim import SourceClaim
+from aegi_core.infra.llm_client import LLMClient
 from aegi_core.services.hypothesis_engine import (
-    LLMBackend,
-    analyze_hypothesis,
+    analyze_hypothesis_llm,
     generate_hypotheses as svc_generate,
 )
 
@@ -108,7 +108,7 @@ async def generate_hypotheses_endpoint(
     case_uid: str,
     body: GenerateIn,
     session: AsyncSession = Depends(get_db_session),
-    llm: LLMBackend = Depends(get_llm_client),
+    llm_client: LLMClient = Depends(get_llm_client),
 ) -> GenerateOut:
     """生成竞争性假设。"""
     rows_a = await session.execute(
@@ -126,9 +126,10 @@ async def generate_hypotheses_endpoint(
         assertions=assertions,
         source_claims=source_claims,
         case_uid=case_uid,
-        llm=llm,
+        llm=llm_client,
         budget=budget,
         context=body.context,
+        llm_client=llm_client,
     )
 
     action_uid = f"act_{uuid4().hex}"
@@ -182,8 +183,9 @@ async def score_hypothesis(
     case_uid: str,
     hypothesis_uid: str,
     session: AsyncSession = Depends(get_db_session),
+    llm_client: LLMClient = Depends(get_llm_client),
 ) -> ScoreOut:
-    """对假设执行评分。"""
+    """对假设执行评分（LLM ACH 分析）。"""
     hyp = await session.get(Hypothesis, hypothesis_uid)
     if hyp is None:
         raise not_found("Hypothesis", hypothesis_uid)
@@ -193,12 +195,7 @@ async def score_hypothesis(
     )
     assertions = [_assertion_to_v1(r) for r in rows_a.scalars().all()]
 
-    rows_sc = await session.execute(
-        sa.select(SourceClaim).where(SourceClaim.case_uid == case_uid)
-    )
-    source_claims = [_sc_to_v1(r) for r in rows_sc.scalars().all()]
-
-    result = analyze_hypothesis(hyp.label, assertions, source_claims)
+    result = await analyze_hypothesis_llm(hyp.label, assertions, llm=llm_client)
 
     hyp.supporting_assertion_uids = result.supporting_assertion_uids
     hyp.contradicting_assertion_uids = result.contradicting_assertion_uids

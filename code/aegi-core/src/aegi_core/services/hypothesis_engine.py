@@ -12,10 +12,16 @@ Evidence:
 
 from __future__ import annotations
 
+import json as _json
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Literal, Protocol
+
+from pydantic import BaseModel
+
+from aegi_core.infra.llm_client import LLMClient
 
 from aegi_core.contracts.audit import ActionV1, ToolTraceV1
 from aegi_core.contracts.llm_governance import (
@@ -81,6 +87,8 @@ def analyze_hypothesis(
 ) -> ACHResult:
     """对单个假设执行支持/反证/缺口分析（纯规则，无 LLM）。
 
+    .. deprecated:: 使用 analyze_hypothesis_llm 替代。
+
     Args:
         hypothesis_text: 假设文本。
         assertions: 可用 assertion 列表。
@@ -89,6 +97,11 @@ def analyze_hypothesis(
     Returns:
         ACHResult 包含支持/反证/缺口/覆盖率/置信度。
     """
+    warnings.warn(
+        "analyze_hypothesis 规则引擎已弃用，请使用 analyze_hypothesis_llm",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     h_lower = hypothesis_text.lower()
 
     supporting: list[str] = []
@@ -158,30 +171,148 @@ def analyze_hypothesis(
     )
 
 
+# ── LLM structured output ACH 分析 ──────────────────────────────
+
+
+class AssertionJudgment(BaseModel):
+    """LLM 对单个 assertion 与假设关系的判断。"""
+
+    assertion_uid: str
+    relation: Literal["support", "contradict", "irrelevant"]
+    reason: str
+
+
+class ACHAnalysisResult(BaseModel):
+    """LLM ACH 分析的 structured output。"""
+
+    hypothesis_text: str
+    judgments: list[AssertionJudgment]
+
+
+_ACH_SYSTEM_PROMPT = """\
+你是一名情报分析师，执行 ACH（竞争性假设分析）。
+给定一个假设和一组情报断言（assertions），对每个 assertion 判断：
+- support：该 assertion 支持假设
+- contradict：该 assertion 反驳假设
+- irrelevant：该 assertion 与假设无关
+
+返回严格 JSON，schema 如下：
+{schema}
+"""
+
+
+def _build_ach_prompt(
+    hypothesis_text: str,
+    assertions: list[AssertionV1],
+) -> str:
+    """构建 ACH 分析 prompt。"""
+    schema = ACHAnalysisResult.model_json_schema()
+    system = _ACH_SYSTEM_PROMPT.format(schema=_json.dumps(schema, ensure_ascii=False))
+    evidence = "\n".join(f"- uid={a.uid}: {a.value}" for a in assertions[:30])
+    return (
+        f"{system}\n\n"
+        f"假设：{hypothesis_text}\n\n"
+        f"Assertions:\n{evidence}\n\n"
+        f"请返回 JSON："
+    )
+
+
+def _parse_ach_result(text: str) -> ACHAnalysisResult:
+    """从 LLM 输出解析 ACHAnalysisResult。"""
+    text = text.strip()
+    if "```" in text:
+        for block in text.split("```"):
+            block = block.strip().removeprefix("json").strip()
+            if block.startswith("{"):
+                text = block
+                break
+    return ACHAnalysisResult.model_validate_json(text)
+
+
+async def analyze_hypothesis_llm(
+    hypothesis_text: str,
+    assertions: list[AssertionV1],
+    *,
+    llm: LLMClient,
+) -> ACHResult:
+    """用 LLM structured output 执行 ACH 分析。
+
+    Args:
+        hypothesis_text: 假设文本。
+        assertions: 可用 assertion 列表。
+        llm: LLM 客户端。
+
+    Returns:
+        ACHResult，judgments 来自 LLM。
+    """
+    if not assertions:
+        return ACHResult(
+            hypothesis_text=hypothesis_text,
+            grounding_level=grounding_gate(False),
+        )
+
+    prompt = _build_ach_prompt(hypothesis_text, assertions)
+    result = await llm.invoke(prompt, max_tokens=4096)
+    parsed = _parse_ach_result(result["text"])
+
+    # 从 judgments 计算 supporting/contradicting/gap
+    uid_set = {a.uid for a in assertions}
+    supporting = [
+        j.assertion_uid
+        for j in parsed.judgments
+        if j.relation == "support" and j.assertion_uid in uid_set
+    ]
+    contradicting = [
+        j.assertion_uid
+        for j in parsed.judgments
+        if j.relation == "contradict" and j.assertion_uid in uid_set
+    ]
+    judged = {j.assertion_uid for j in parsed.judgments}
+    gap_list = [
+        f"assertion {a.uid} not evaluated" for a in assertions if a.uid not in judged
+    ]
+
+    coverage = _compute_coverage(supporting, contradicting, len(assertions))
+    confidence = _compute_confidence(len(supporting), len(contradicting))
+    grounding = grounding_gate(len(supporting) > 0)
+
+    return ACHResult(
+        hypothesis_text=hypothesis_text,
+        supporting_assertion_uids=supporting,
+        contradicting_assertion_uids=contradicting,
+        coverage_score=coverage,
+        confidence=confidence,
+        gap_list=gap_list,
+        grounding_level=grounding,
+    )
+
+
 async def generate_hypotheses(
     *,
     assertions: list[AssertionV1],
     source_claims: list[SourceClaimV1],
     case_uid: str,
-    llm: LLMBackend,
+    llm: LLMClient,
     budget: BudgetContext,
     model_id: str = "default",
     trace_id: str | None = None,
     context: dict | None = None,
+    llm_client: LLMClient | None = None,
 ) -> tuple[
     list[ACHResult], ActionV1, ToolTraceV1, LLMInvocationResult | DegradedOutput
 ]:
-    """生成假设并执行 ACH 分析。
+    """用 LLM 生成假设并执行 ACH 分析。
 
     Args:
         assertions: 输入 assertion 列表。
         source_claims: 输入 source claim 列表。
         case_uid: 所属 case。
-        llm: LLM 后端（可注入）。
+        llm: LLM 客户端。
         budget: Token/cost 预算。
         model_id: 模型标识。
         trace_id: 分布式追踪 ID。
-        context: 可选上下文（时间窗、地域）。
+        context: 可选上下文。
+        llm_client: 用于 ACH 分析的 LLM 客户端（默认复用 llm）。
 
     Returns:
         Tuple of (ach_results, action, tool_trace, llm_result_or_degraded).
@@ -206,7 +337,7 @@ async def generate_hypotheses(
 
     start_ms = _now_ms()
     try:
-        raw: list[dict] = await llm.invoke(invocation_req, prompt)
+        raw: list[dict] = await llm.invoke_as_backend(invocation_req, prompt)
     except Exception as exc:
         duration = _now_ms() - start_ms
         degraded = DegradedOutput(
@@ -242,12 +373,13 @@ async def generate_hypotheses(
 
     duration = _now_ms() - start_ms
 
+    _llm_client = llm_client or llm
     results: list[ACHResult] = []
     for item in raw:
         h_text = item.get("hypothesis_text", "")
         if not h_text:
             continue
-        result = analyze_hypothesis(h_text, assertions, source_claims)
+        result = await analyze_hypothesis_llm(h_text, assertions, llm=_llm_client)
         results.append(result)
 
     all_supporting = [uid for r in results for uid in r.supporting_assertion_uids]
