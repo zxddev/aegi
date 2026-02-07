@@ -16,7 +16,9 @@ class ToolClient:
     async def archive_url(self, url: str) -> dict:
         start = monotonic()
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(f"{self._base_url}/tools/archive_url", json={"url": url})
+            resp = await client.post(
+                f"{self._base_url}/tools/archive_url", json={"url": url}
+            )
 
         duration_ms = int((monotonic() - start) * 1000)
 
@@ -34,9 +36,14 @@ class ToolClient:
                 data.keys()
             ):
                 raise AegiHTTPError(
-                    resp.status_code, data["error_code"], data["message"], data["details"]
+                    resp.status_code,
+                    data["error_code"],
+                    data["message"],
+                    data["details"],
                 )
-            raise AegiHTTPError(resp.status_code, "gateway_error", "Gateway error", {"body": data})
+            raise AegiHTTPError(
+                resp.status_code, "gateway_error", "Gateway error", {"body": data}
+            )
 
         if isinstance(data, dict):
             data.setdefault("duration_ms", duration_ms)

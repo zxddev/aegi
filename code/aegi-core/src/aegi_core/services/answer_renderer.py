@@ -48,7 +48,11 @@ def render_answer(
     max_allowed = grounding_gate(has_citations)
 
     # 降级逻辑：requested_type 不得超过 max_allowed
-    level_order = [GroundingLevel.HYPOTHESIS, GroundingLevel.INFERENCE, GroundingLevel.FACT]
+    level_order = [
+        GroundingLevel.HYPOTHESIS,
+        GroundingLevel.INFERENCE,
+        GroundingLevel.FACT,
+    ]
     req_idx = level_order.index(requested_type)
     max_idx = level_order.index(max_allowed)
     actual_type = level_order[min(req_idx, max_idx)]

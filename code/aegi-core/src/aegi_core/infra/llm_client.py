@@ -21,7 +21,9 @@ from aegi_core.contracts.llm_governance import (
 class LLMClient:
     """Thin wrapper around LiteLLM Proxy /v1/responses endpoint."""
 
-    def __init__(self, base_url: str, api_key: str, default_model: str = "default") -> None:
+    def __init__(
+        self, base_url: str, api_key: str, default_model: str = "default"
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._default_model = default_model
@@ -52,7 +54,9 @@ class LLMClient:
         """
         model = model or (request.model_id if request else self._default_model)
         budget = (
-            request.budget_context if request else BudgetContext(max_tokens=4096, max_cost_usd=1.0)
+            request.budget_context
+            if request
+            else BudgetContext(max_tokens=4096, max_cost_usd=1.0)
         )
 
         payload: dict[str, Any] = {

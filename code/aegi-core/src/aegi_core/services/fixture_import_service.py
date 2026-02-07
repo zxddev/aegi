@@ -49,7 +49,11 @@ async def import_fixture(
         fixtures = []
 
     fixture_item = next(
-        (f for f in fixtures if isinstance(f, dict) and f.get("fixture_id") == fixture_id),
+        (
+            f
+            for f in fixtures
+            if isinstance(f, dict) and f.get("fixture_id") == fixture_id
+        ),
         None,
     )
     if fixture_item is None:
@@ -85,7 +89,11 @@ async def import_fixture(
     artifact_identity_uid = f"ai_{uuid4().hex}"
     artifact_version_uid = f"av_{uuid4().hex}"
 
-    session.add(ArtifactIdentity(uid=artifact_identity_uid, kind=artifact_kind, canonical_url=None))
+    session.add(
+        ArtifactIdentity(
+            uid=artifact_identity_uid, kind=artifact_kind, canonical_url=None
+        )
+    )
     session.add(
         ArtifactVersion(
             uid=artifact_version_uid,
@@ -149,7 +157,11 @@ async def import_fixture(
 
     # --- source claims + evidence ---
     sc_doc = json.loads(
-        ((fixtures_root / fixture_item["source_claims_path"]).read_text(encoding="utf-8"))
+        (
+            (fixtures_root / fixture_item["source_claims_path"]).read_text(
+                encoding="utf-8"
+            )
+        )
     )
     sc_src = sc_doc.get("source_claims")
     if not isinstance(sc_src, list) or not sc_src:

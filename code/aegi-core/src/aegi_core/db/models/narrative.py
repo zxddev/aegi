@@ -28,9 +28,15 @@ class Narrative(Base):
         nullable=False,
     )
     theme: Mapped[str] = mapped_column(sa.Text(), nullable=False)
-    source_claim_uids: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
-    first_seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
-    latest_seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    source_claim_uids: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, nullable=False
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False
+    )
+    latest_seen_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False
     )

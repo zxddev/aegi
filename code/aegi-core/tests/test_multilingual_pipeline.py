@@ -75,7 +75,9 @@ async def test_detect_multiple_claims() -> None:
 
 @pytest.mark.asyncio
 async def test_translate_basic() -> None:
-    resp = await translate_claims([_make_claim("c1", "中国是一个大国")], "en", _budget())
+    resp = await translate_claims(
+        [_make_claim("c1", "中国是一个大国")], "en", _budget()
+    )
     assert isinstance(resp, TranslateClaimsResponse)
     r = resp.results[0]
     assert r.original_quote == "中国是一个大国"

@@ -32,13 +32,4 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-
-[tool.ruff]
-target-version = "py312"
-line-length = 100
-
-[tool.setuptools]
-package-dir = {"" = "src"}
-
-[tool.setuptools.packages.find]
-where = ["src"]
+asyncio_default_fixture_loop_scope = "session"

@@ -39,7 +39,9 @@ class _AsgiGatewayToolClient:
 
     async def archive_url(self, url: str) -> dict:
         transport = httpx.ASGITransport(app=self._gateway_app)  # type: ignore[arg-type]
-        async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://gateway"
+        ) as client:
             resp = await client.post("/tools/archive_url", json={"url": url})
             resp.raise_for_status()
             return resp.json()
@@ -50,7 +52,9 @@ def test_core_tool_trace_policy_from_real_gateway_response(monkeypatch) -> None:
     monkeypatch.setenv("AEGI_GATEWAY_ALLOW_DOMAINS", "example.com")
 
     gateway_app = _import_gateway_app()
-    app.dependency_overrides[get_tool_client] = lambda: _AsgiGatewayToolClient(gateway_app)
+    app.dependency_overrides[get_tool_client] = lambda: _AsgiGatewayToolClient(
+        gateway_app
+    )
     try:
         client = TestClient(app)
         created = client.post(
@@ -61,7 +65,11 @@ def test_core_tool_trace_policy_from_real_gateway_response(monkeypatch) -> None:
 
         called = client.post(
             f"/cases/{case_uid}/tools/archive_url",
-            json={"url": "https://example.com/x", "actor_id": "user_1", "rationale": "call"},
+            json={
+                "url": "https://example.com/x",
+                "actor_id": "user_1",
+                "rationale": "call",
+            },
         )
         assert called.status_code == 200
         tool_trace_uid = called.json()["tool_trace_uid"]

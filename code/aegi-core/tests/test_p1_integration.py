@@ -14,10 +14,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import httpx
 import pytest
 import sqlalchemy as sa
 from fastapi.testclient import TestClient
@@ -112,12 +112,13 @@ async def test_llm_embed(llm: LLMClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_qdrant_upsert_and_search(llm: LLMClient, qdrant: QdrantStore) -> None:
+async def test_qdrant_upsert_and_search(llm: LLMClient) -> None:
     """Embed → Qdrant upsert → 语义搜索命中。"""
-    await qdrant.connect()
-
-    # 插入两条不同主题的文本（用唯一前缀避免残留数据干扰）
+    # 用独立 collection 避免残留数据干扰
     tag = uuid4().hex[:6]
+    qs = QdrantStore(url=settings.qdrant_url, collection=f"test_{tag}")
+    await qs.connect()
+
     mil_id = f"chunk_mil_{tag}"
     eco_id = f"chunk_eco_{tag}"
     texts = {
@@ -126,11 +127,11 @@ async def test_qdrant_upsert_and_search(llm: LLMClient, qdrant: QdrantStore) -> 
     }
     for cid, text in texts.items():
         vec = await llm.embed(text)
-        await qdrant.upsert(cid, vec, text)
+        await qs.upsert(cid, vec, text)
 
     # 搜索军事相关内容
     q_vec = await llm.embed("海军演习")
-    hits = await qdrant.search(q_vec, limit=5, score_threshold=0.3)
+    hits = await qs.search(q_vec, limit=5, score_threshold=0.3)
     assert len(hits) > 0
     hit_ids = [h.chunk_uid for h in hits]
     # 军事 chunk 应在结果中且排在经济 chunk 前面
@@ -183,7 +184,9 @@ async def test_translate_claims_with_llm(llm: LLMClient) -> None:
     assert "[translated:" not in t.translation
     # 应包含英文关键词
     lower = t.translation.lower()
-    assert any(kw in lower for kw in ["navy", "military", "exercise", "drill", "south china"])
+    assert any(
+        kw in lower for kw in ["navy", "military", "exercise", "drill", "south china"]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -196,8 +199,12 @@ async def test_align_entities_with_llm(llm: LLMClient) -> None:
     """跨语言实体对齐：同一实体不同语言表述应被关联。"""
     claims = [
         _make_claim("ae_1", "中国海军在南海举行演习", lang="zh"),
-        _make_claim("ae_2", "The Chinese Navy held exercises in the South China Sea", lang="en"),
-        _make_claim("ae_3", "ВМС Китая провели учения в Южно-Китайском море", lang="ru"),
+        _make_claim(
+            "ae_2", "The Chinese Navy held exercises in the South China Sea", lang="en"
+        ),
+        _make_claim(
+            "ae_3", "ВМС Китая провели учения в Южно-Китайском море", lang="ru"
+        ),
     ]
     resp = await align_entities(claims, _BUDGET, llm=llm)
     # 应该产生至少一个 entity link
@@ -291,39 +298,59 @@ def _seed_case_for_semantic_search(
     return case_uid, claims_data, suffix
 
 
+def _sync_embed(text: str) -> list[float]:
+    """同步调用 embedding API，避免跨 event loop 问题。"""
+    resp = httpx.post(
+        f"{settings.embedding_base_url}/v1/embeddings",
+        json={"model": settings.embedding_model, "input": text},
+        headers={"Authorization": f"Bearer {settings.embedding_api_key}"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["data"][0]["embedding"]
+
+
 def test_chat_semantic_search_e2e(_ensure_tables: None) -> None:
     """Chat API 通过语义检索找到相关 claim 并返回 citations。"""
-    import os
+    from uuid import NAMESPACE_URL
+    from uuid import uuid5 as _uuid5
 
-    # 强制 NullPool 避免 asyncpg event loop 冲突
-    os.environ["AEGI_DB_USE_NULL_POOL"] = "true"
+    from qdrant_client import QdrantClient
+    from qdrant_client.http.models import Distance, PointStruct, VectorParams
 
-    # 重新导入 app 以使用新的连接池设置
-    from importlib import reload
+    from aegi_core.api.deps import get_qdrant_store
+    from aegi_core.api.main import create_app
 
-    import aegi_core.db.session as _sess
-    import aegi_core.api.deps as _deps
+    # 用独立 collection + 同步 client seed 数据，避免跨 event loop 问题
+    tag = uuid4().hex[:6]
+    collection = f"test_chat_{tag}"
+    sync_qc = QdrantClient(url=settings.qdrant_url, check_compatibility=False)
+    sync_qc.create_collection(
+        collection_name=collection,
+        vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
+    )
 
-    reload(_sess)
-    reload(_deps)
+    app = create_app()
+    # override qdrant 依赖，注入独立 collection 的 store
+    _test_qdrant = QdrantStore(url=settings.qdrant_url, collection=collection)
+    app.dependency_overrides[get_qdrant_store] = lambda: _test_qdrant
 
-    from aegi_core.api.main import app as _app
-
-    _llm = LLMClient(base_url=settings.litellm_base_url, api_key=settings.litellm_api_key)
-    _qdrant = QdrantStore(url=settings.qdrant_url)
-
-    client = TestClient(_app)
+    client = TestClient(app)
     case_uid, claims_data, suffix = _seed_case_for_semantic_search(client)
 
-    # Embed chunks 到 Qdrant（同步包装）
-    async def _setup() -> None:
-        await _qdrant.connect()
-        for i, (quote, _lang) in enumerate(claims_data):
-            cid = f"chunk_{suffix}_{i}"
-            vec = await _llm.embed(quote)
-            await _qdrant.upsert(cid, vec, quote)
-
-    asyncio.run(_setup())
+    # 同步 embed + upsert 到独立 collection
+    for i, (quote, _lang) in enumerate(claims_data):
+        cid = f"chunk_{suffix}_{i}"
+        vec = _sync_embed(quote)
+        point_id = str(_uuid5(NAMESPACE_URL, cid))
+        sync_qc.upsert(
+            collection_name=collection,
+            points=[
+                PointStruct(
+                    id=point_id, vector=vec, payload={"chunk_uid": cid, "text": quote}
+                )
+            ],
+        )
 
     # 用中文问军事演习相关问题
     resp = client.post(

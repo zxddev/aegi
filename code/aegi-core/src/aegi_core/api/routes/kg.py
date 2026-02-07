@@ -118,6 +118,8 @@ async def ontology_upgrade(
 
 
 @router.get("/cases/{case_uid}/ontology/{version}/compatibility_report")
-async def compatibility_report(case_uid: str, version: str, from_version: str = "1.0.0") -> dict:
+async def compatibility_report(
+    case_uid: str, version: str, from_version: str = "1.0.0"
+) -> dict:
     report = ontology_versioning.compute_compatibility(from_version, version)
     return {"result": report.model_dump()}

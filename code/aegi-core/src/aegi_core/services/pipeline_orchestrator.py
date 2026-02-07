@@ -152,7 +152,9 @@ class PipelineOrchestrator:
             result,
         )
         # narrative_build (sync)
-        narratives, result = self._stage_narrative(active, source_claims, narratives, result)
+        narratives, result = self._stage_narrative(
+            active, source_claims, narratives, result
+        )
 
         # kg_build — skipped in sync mode (no Neo4j)
         if "kg_build" in active:
@@ -257,7 +259,9 @@ class PipelineOrchestrator:
             hypotheses = []
 
         # narrative_build (sync)
-        narratives, result = self._stage_narrative(active, source_claims, narratives, result)
+        narratives, result = self._stage_narrative(
+            active, source_claims, narratives, result
+        )
 
         # kg_build — write to Neo4j if available
         if "kg_build" in active and self._neo4j is not None and assertions:
@@ -342,7 +346,9 @@ class PipelineOrchestrator:
                 continue
 
             # Run ACH analysis on each hypothesis
-            ach = hypothesis_engine.analyze_hypothesis(h_text, assertions, source_claims)
+            ach = hypothesis_engine.analyze_hypothesis(
+                h_text, assertions, source_claims
+            )
             hypotheses.append(_ach_to_hypothesis(ach, case_uid))
 
         # Fallback: if LLM didn't produce usable hypotheses, use rule-based
@@ -382,7 +388,12 @@ class PipelineOrchestrator:
         await neo.upsert_nodes(
             "Entity",
             [
-                {"uid": e.uid, "name": e.label, "type": e.entity_type, "case_uid": e.case_uid}
+                {
+                    "uid": e.uid,
+                    "name": e.label,
+                    "type": e.entity_type,
+                    "case_uid": e.case_uid,
+                }
                 for e in entities
             ],
         )
@@ -401,8 +412,12 @@ class PipelineOrchestrator:
         )
         for r in relations:
             await neo.upsert_edges(
-                "Entity" if any(e.uid == r.source_entity_uid for e in entities) else "Event",
-                "Entity" if any(e.uid == r.target_entity_uid for e in entities) else "Event",
+                "Entity"
+                if any(e.uid == r.source_entity_uid for e in entities)
+                else "Event",
+                "Entity"
+                if any(e.uid == r.target_entity_uid for e in entities)
+                else "Event",
                 r.relation_type.upper(),
                 [
                     {
@@ -436,13 +451,18 @@ class PipelineOrchestrator:
         if stage_name in active:
             if existing is not None:
                 result.stages.append(
-                    StageResult(stage=stage_name, status="skipped",
-                                duration_ms=0, output=existing)
+                    StageResult(
+                        stage=stage_name,
+                        status="skipped",
+                        duration_ms=0,
+                        output=existing,
+                    )
                 )
             elif not inputs:
                 result.stages.append(
-                    StageResult(stage=stage_name, status="skipped",
-                                duration_ms=0, output=[])
+                    StageResult(
+                        stage=stage_name, status="skipped", duration_ms=0, output=[]
+                    )
                 )
                 existing = []
             else:
@@ -465,9 +485,13 @@ class PipelineOrchestrator:
         result: PipelineResult,
     ) -> tuple[list[AssertionV1], PipelineResult]:
         return self._run_or_skip(
-            active, "assertion_fuse", assertions, source_claims,
+            active,
+            "assertion_fuse",
+            assertions,
+            source_claims,
             lambda: assertion_fuser.fuse_claims(source_claims, case_uid=case_uid),
-            result, unpack_first=True,
+            result,
+            unpack_first=True,
         )
 
     def _stage_hypothesis_sync(
@@ -480,13 +504,17 @@ class PipelineOrchestrator:
         result: PipelineResult,
     ) -> tuple[list[HypothesisV1], PipelineResult]:
         return self._run_or_skip(
-            active, "hypothesis_analyze", hypotheses, assertions,
+            active,
+            "hypothesis_analyze",
+            hypotheses,
+            assertions,
             lambda: [
                 _ach_to_hypothesis(r, case_uid)
                 for r in [
                     hypothesis_engine.analyze_hypothesis(
                         "Auto-generated hypothesis from assertions",
-                        assertions, source_claims,
+                        assertions,
+                        source_claims,
                     )
                 ]
             ],
@@ -501,7 +529,10 @@ class PipelineOrchestrator:
         result: PipelineResult,
     ) -> tuple[list[NarrativeV1], PipelineResult]:
         return self._run_or_skip(
-            active, "narrative_build", narratives, source_claims,
+            active,
+            "narrative_build",
+            narratives,
+            source_claims,
             lambda: narrative_builder.build_narratives(source_claims),
             result,
         )
@@ -517,12 +548,18 @@ class PipelineOrchestrator:
         result: PipelineResult,
     ) -> tuple[list[ForecastV1], PipelineResult]:
         return self._run_or_skip(
-            active, "forecast_generate", forecasts, hypotheses,
+            active,
+            "forecast_generate",
+            forecasts,
+            hypotheses,
             lambda: generate_forecasts(
-                hypotheses=hypotheses, assertions=assertions,
-                narratives=narratives, case_uid=case_uid,
+                hypotheses=hypotheses,
+                assertions=assertions,
+                narratives=narratives,
+                case_uid=case_uid,
             ),
-            result, unpack_first=True,
+            result,
+            unpack_first=True,
         )
 
     def _stage_quality(

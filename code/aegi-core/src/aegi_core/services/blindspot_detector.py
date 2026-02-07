@@ -30,7 +30,9 @@ def _coverage_blindspots(
     assertion_uid_set = {a.uid for a in assertions}
     items: list[BlindspotItem] = []
     for h in hypotheses:
-        unsupported = [uid for uid in h.supporting_assertion_uids if uid not in assertion_uid_set]
+        unsupported = [
+            uid for uid in h.supporting_assertion_uids if uid not in assertion_uid_set
+        ]
         if unsupported:
             items.append(
                 BlindspotItem(

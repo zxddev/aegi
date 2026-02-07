@@ -33,7 +33,9 @@ from aegi_core.contracts.schemas import AssertionV1, SourceClaimV1
 class LLMBackend(Protocol):
     """Protocol for LLM invocation (allows test injection)."""
 
-    async def invoke(self, request: LLMInvocationRequest, prompt: str) -> list[dict]: ...
+    async def invoke(
+        self, request: LLMInvocationRequest, prompt: str
+    ) -> list[dict]: ...
 
 
 PROMPT_VERSION = "ach_hypothesis_v1"
@@ -103,8 +105,21 @@ def analyze_hypothesis(
 
         combined = val_str + " " + " ".join(quote_texts)
 
-        deny_keywords = {"denied", "rejected", "refuted", "disputed", "contradicts", "against"}
-        support_keywords = {"confirmed", "affirmed", "verified", "supports", "consistent"}
+        deny_keywords = {
+            "denied",
+            "rejected",
+            "refuted",
+            "disputed",
+            "contradicts",
+            "against",
+        }
+        support_keywords = {
+            "confirmed",
+            "affirmed",
+            "verified",
+            "supports",
+            "consistent",
+        }
 
         has_deny = any(k in combined for k in deny_keywords)
         has_support = any(k in combined for k in support_keywords)
@@ -122,7 +137,9 @@ def analyze_hypothesis(
 
     # 缺口：没有被任何 supporting/contradicting 覆盖的 assertion
     covered = set(supporting) | set(contradicting)
-    gap_list = [f"assertion {a.uid} not evaluated" for a in assertions if a.uid not in covered]
+    gap_list = [
+        f"assertion {a.uid} not evaluated" for a in assertions if a.uid not in covered
+    ]
 
     coverage = _compute_coverage(supporting, contradicting, len(assertions))
     confidence = _compute_confidence(len(supporting), len(contradicting))
@@ -151,7 +168,9 @@ async def generate_hypotheses(
     model_id: str = "default",
     trace_id: str | None = None,
     context: dict | None = None,
-) -> tuple[list[ACHResult], ActionV1, ToolTraceV1, LLMInvocationResult | DegradedOutput]:
+) -> tuple[
+    list[ACHResult], ActionV1, ToolTraceV1, LLMInvocationResult | DegradedOutput
+]:
     """生成假设并执行 ACH 分析。
 
     Args:
@@ -190,7 +209,9 @@ async def generate_hypotheses(
         raw: list[dict] = await llm.invoke(invocation_req, prompt)
     except Exception as exc:
         duration = _now_ms() - start_ms
-        degraded = DegradedOutput(reason=DegradedReason.MODEL_UNAVAILABLE, detail=str(exc))
+        degraded = DegradedOutput(
+            reason=DegradedReason.MODEL_UNAVAILABLE, detail=str(exc)
+        )
         action = ActionV1(
             uid=uuid.uuid4().hex,
             case_uid=case_uid,
@@ -248,7 +269,10 @@ async def generate_hypotheses(
         case_uid=case_uid,
         action_type="ach_generate",
         rationale=f"Generated {len(results)} hypotheses from {len(assertions)} assertions",
-        inputs={"assertion_count": len(assertions), "source_claim_count": len(source_claims)},
+        inputs={
+            "assertion_count": len(assertions),
+            "source_claim_count": len(source_claims),
+        },
         outputs={"hypothesis_count": len(results)},
         trace_id=_trace_id,
         span_id=_span_id,

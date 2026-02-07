@@ -12,7 +12,7 @@
 
 ## 1. MCP 扩展工具
 
-以下工具需要在 `dev.json` 的 `mcpServers` 中配置才可用。使用前先确认已配置。
+以下工具通过 Kiro CLI 全局配置或 `dev.json` 的 `mcpServers` 加载。
 
 ### 1.1 serena（语义代码分析与精确编辑）
 
@@ -30,7 +30,7 @@
 
 ### 1.3 context7（权威库文档查询）
 
-流程：`context7_resolve-library-id` → `context7_query-docs`。
+流程：`resolve-library-id` → `query-docs`。
 
 ### 1.4 langchain-docs（LangChain 文档检索）
 
@@ -46,12 +46,12 @@ Issue/PR/文件内容读取，创建 issue/PR，查询 diff/状态。
 
 ### 1.7 repomix（代码库打包索引）
 
-需要全局理解或跨大量文件检索时使用。注意排除 `.venv/`、`node_modules/`。
+需要全局理解或跨大量文件检索时使用。排除 `.venv/`、`node_modules/`。
 
 ### 1.8 exa / tavily（网络搜索）
 
-- `exa_get_code_context_exa`：代码示例/官方仓库/StackOverflow
-- `exa_web_search_exa` / `tavily_tavily_search`：通用检索
+- `exa`：代码示例/官方仓库/StackOverflow
+- `tavily`：通用检索
 
 ### 1.9 playwright（网页交互/可视化抓取）
 

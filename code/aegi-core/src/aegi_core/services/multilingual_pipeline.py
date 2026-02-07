@@ -148,7 +148,9 @@ async def detect_language(
                 except (httpx.HTTPError, KeyError, ValueError):
                     pass  # 保留规则结果
             results.append(
-                DetectLanguageResult(claim_uid=claim.uid, language=lang, confidence=conf)
+                DetectLanguageResult(
+                    claim_uid=claim.uid, language=lang, confidence=conf
+                )
             )
         except Exception as exc:
             failures.append(
@@ -191,7 +193,10 @@ async def translate_claims(
         trace_id=trace_id,
     )
 
-    if budget_context.remaining_cost_usd is not None and budget_context.remaining_cost_usd <= 0:
+    if (
+        budget_context.remaining_cost_usd is not None
+        and budget_context.remaining_cost_usd <= 0
+    ):
         degraded = DegradedOutput(
             reason=DegradedReason.BUDGET_EXCEEDED,
             detail=f"Budget exhausted for model {model_id}",
@@ -232,7 +237,9 @@ async def translate_claims(
                         request=invocation_req,
                     )
                     translated_text = resp["text"].strip()
-                    est_tokens = resp["usage"].get("total_tokens", len(claim.quote) // 2)
+                    est_tokens = resp["usage"].get(
+                        "total_tokens", len(claim.quote) // 2
+                    )
                 except (httpx.HTTPError, KeyError):
                     translated_text = f"[translated:{target_language}] {claim.quote}"
                     est_tokens = len(claim.quote) // 2

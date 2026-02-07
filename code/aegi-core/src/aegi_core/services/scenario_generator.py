@@ -98,7 +98,9 @@ def generate_forecasts(
 
     for hyp in hypotheses:
         causal = analyze_causal_links(hyp, assertions, narratives)
-        grounding = grounding_gate(has_evidence and len(hyp.supporting_assertion_uids) > 0)
+        grounding = grounding_gate(
+            has_evidence and len(hyp.supporting_assertion_uids) > 0
+        )
 
         # 构建 trigger conditions
         triggers: list[str] = []
@@ -124,12 +126,16 @@ def generate_forecasts(
 
         # 生成替代解释（强制：不允许单因果链闭环）
         other_labels = [h.label for h in hypotheses if h.uid != hyp.uid]
-        alternatives = other_labels if other_labels else ["No alternative hypotheses available"]
+        alternatives = (
+            other_labels if other_labels else ["No alternative hypotheses available"]
+        )
 
         # 状态判定
         if grounding != GroundingLevel.FACT:
             status = "degraded"
-        elif has_conflict or (probability is not None and probability >= HIGH_RISK_THRESHOLD):
+        elif has_conflict or (
+            probability is not None and probability >= HIGH_RISK_THRESHOLD
+        ):
             status = "pending_review"
         else:
             status = "published"
@@ -153,7 +159,10 @@ def generate_forecasts(
         case_uid=case_uid,
         action_type="forecast_generate",
         rationale=f"Generated {len(forecasts)} forecasts from {len(hypotheses)} hypotheses",
-        inputs={"hypothesis_count": len(hypotheses), "assertion_count": len(assertions)},
+        inputs={
+            "hypothesis_count": len(hypotheses),
+            "assertion_count": len(assertions),
+        },
         outputs={"forecast_count": len(forecasts)},
         trace_id=_trace_id,
         span_id=_span_id,
@@ -203,7 +212,9 @@ def backtest_forecast(
         precision = 0.0
 
     false_alarm = (not_occurred / total) if predicted_positive else 0.0
-    missed_alert = (occurred / total) if not predicted_positive and occurred > 0 else 0.0
+    missed_alert = (
+        (occurred / total) if not predicted_positive and occurred > 0 else 0.0
+    )
 
     return BacktestSummary(
         precision=precision,

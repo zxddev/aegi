@@ -78,7 +78,9 @@ async def chat(
 
     # 3) 降级：语义检索无结果时回退关键词匹配
     if not matched:
-        rows = await session.execute(sa.select(SourceClaim).where(SourceClaim.case_uid == case_uid))
+        rows = await session.execute(
+            sa.select(SourceClaim).where(SourceClaim.case_uid == case_uid)
+        )
         all_claims = rows.scalars().all()
         keywords = body.question.lower().split()
         for sc in all_claims:
@@ -156,6 +158,8 @@ async def get_chat_trace(
     )
     action = row.scalars().first()
     if action is None or not action.outputs:
-        raise AegiHTTPError(404, "trace_not_found", "Chat trace not found", {"trace_id": trace_id})
+        raise AegiHTTPError(
+            404, "trace_not_found", "Chat trace not found", {"trace_id": trace_id}
+        )
 
     return action.outputs

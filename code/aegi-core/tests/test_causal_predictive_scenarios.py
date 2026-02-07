@@ -174,7 +174,9 @@ class TestForecast002ConflictingSignals:
         )
         return results
 
-    def test_multiple_scenarios(self, forecasts: list[ForecastV1], scenario: dict) -> None:
+    def test_multiple_scenarios(
+        self, forecasts: list[ForecastV1], scenario: dict
+    ) -> None:
         assert len(forecasts) >= scenario["expected"]["scenario_count_gte"]
 
     def test_has_alternatives(self, forecasts: list[ForecastV1]) -> None:

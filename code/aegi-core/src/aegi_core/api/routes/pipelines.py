@@ -199,7 +199,9 @@ async def translate_claims_endpoint(
     body: TranslateClaimsRequest,
 ) -> TranslateClaimsResponse:
     """翻译 claims 到目标语言。"""
-    return await translate_claims(body.claims, body.target_language, body.budget_context)
+    return await translate_claims(
+        body.claims, body.target_language, body.budget_context
+    )
 
 
 @router.post("/align_entities_cross_lingual", response_model=AlignEntitiesResponse)

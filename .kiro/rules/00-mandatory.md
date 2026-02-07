@@ -40,13 +40,30 @@
   - 需要融合多来源信息（代码 + 文档 + 运行结果）
 - 产出要求：最终回答必须明确列出**关键假设**、**证据来源**、**决策点与取舍**。
 
-## 0.4 工具使用（禁止凭记忆编造）
+## 0.4 禁止降级（绝对硬要求）
+
+- **禁止**在遇到困难时自行降级、简化、mock、stub、跳过、用 TODO 占位、或把功能改成"简化版"。
+- 遇到不会的、报错的、不确定的，必须：
+  1. 用 `sequentialthinking` 深度分析问题根因
+  2. 用 `context7` / `langchain-docs` 查官方文档
+  3. 用 `exa` / `tavily` 搜索解决方案和社区实践
+  4. 仍然解决不了，**必须停下来问用户**，不允许自行决定降级
+- 典型违规行为（一律禁止）：
+  - 把完整实现改成 `pass` / `raise NotImplementedError` / `# TODO`
+  - 把类型标注从具体类型改成 `Any`
+  - 把异步实现改成同步"先跑通"
+  - 跳过校验/权限/审计中的任何一步
+  - 用 `print` 代替结构化日志
+  - 把真实逻辑替换为硬编码返回值
+- 降级 = bug。宁可停下来说"我搞不定，需要你的输入"，也不允许偷偷降级。
+
+## 0.5 工具使用（禁止凭记忆编造）
 
 - 禁止凭记忆编造 API 用法、库行为、代码结构。必须用工具获取事实。
 - 工具选择、优先级、操作细则：详见 `01-tools.md`。
 - 并发：**禁止**对同一个文件并行调用编辑工具。
 
-## 0.5 双能力自动编排（superpowers + OpenSpec）
+## 0.6 双能力自动编排（superpowers + OpenSpec）
 
 - 默认由 AI 自动触发，不要求用户手工指定；命中多个条件时必须组合执行。
 - 职责分层：
@@ -63,7 +80,7 @@
 
 - 决策优先级：正确性与可审计性 > 兼容性 > 速度。
 
-## 0.6 推荐主流程（从需求到交付）
+## 0.7 推荐主流程（从需求到交付）
 
 - **新需求/新能力**：brainstorming → writing-plans → using-git-worktrees → TDD → verification-before-completion → requesting-code-review → finishing-a-development-branch
 - **Bug 修复**：systematic-debugging → 补回归测试 → TDD → verification-before-completion
@@ -71,7 +88,7 @@
 - **计划执行**：同会话用 subagent-driven-development，独立会话用 executing-plans
 - **收到 review**：先 receiving-code-review（验证/复现/澄清），再修改
 
-## 0.7 文件作者标记（强制）
+## 0.8 文件作者标记（强制）
 
 - 每次**修改**任意文件时，若文件头部尚未包含作者标记，则在文件头部补充；已存在则不重复添加。
 - 标记格式：`Author: msq`，按文件类型使用对应注释语法：

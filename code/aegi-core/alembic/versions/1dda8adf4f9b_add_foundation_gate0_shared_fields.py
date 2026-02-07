@@ -22,7 +22,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("source_claims", sa.Column("segment_ref", sa.String(128), nullable=True))
+    op.add_column(
+        "source_claims", sa.Column("segment_ref", sa.String(128), nullable=True)
+    )
     op.add_column("source_claims", sa.Column("media_time_range", JSONB, nullable=True))
     op.add_column("assertions", sa.Column("modality", sa.String(32), nullable=True))
     op.add_column("assertions", sa.Column("segment_ref", sa.String(128), nullable=True))

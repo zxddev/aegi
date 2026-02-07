@@ -48,7 +48,9 @@ def build_narratives(
         placed = False
         for cluster in clusters:
             representative = cluster[0]
-            time_diff = abs((claim.created_at - representative.created_at).total_seconds())
+            time_diff = abs(
+                (claim.created_at - representative.created_at).total_seconds()
+            )
             if time_diff > time_window_hours * 3600:
                 continue
             if _similarity(claim.quote, representative.quote) >= similarity_threshold:
@@ -130,7 +132,9 @@ def build_narratives_with_uids(
         placed = False
         for cluster in clusters:
             representative = cluster[0]
-            time_diff = abs((claim.created_at - representative.created_at).total_seconds())
+            time_diff = abs(
+                (claim.created_at - representative.created_at).total_seconds()
+            )
             if time_diff > time_window_hours * 3600:
                 continue
             if _similarity(claim.quote, representative.quote) >= similarity_threshold:

@@ -44,15 +44,20 @@ class QdrantStore:
         )
 
     async def connect(self) -> None:
-        """Ensure collection exists."""
-        assert self._client is not None
+        """Ensure collection exists. Reconnect if previously closed."""
+        if self._client is None:
+            from qdrant_client import AsyncQdrantClient
+
+            self._client = AsyncQdrantClient(url=self._url, check_compatibility=False)
         from qdrant_client.http.models import Distance, VectorParams
 
         exists = await self._client.collection_exists(self._collection)
         if not exists:
             await self._client.create_collection(
                 collection_name=self._collection,
-                vectors_config=VectorParams(size=self._vector_size, distance=Distance.COSINE),
+                vectors_config=VectorParams(
+                    size=self._vector_size, distance=Distance.COSINE
+                ),
             )
             logger.info("Created Qdrant collection: %s", self._collection)
 
@@ -93,7 +98,11 @@ class QdrantStore:
             PointStruct(
                 id=str(uuid5(NAMESPACE_URL, p["chunk_uid"])),
                 vector=p["embedding"],
-                payload={"chunk_uid": p["chunk_uid"], "text": p["text"], **p.get("metadata", {})},
+                payload={
+                    "chunk_uid": p["chunk_uid"],
+                    "text": p["text"],
+                    **p.get("metadata", {}),
+                },
             )
             for p in points
         ]
@@ -120,7 +129,9 @@ class QdrantStore:
                 text=(hit.payload or {}).get("text", ""),
                 score=hit.score,
                 metadata={
-                    k: v for k, v in (hit.payload or {}).items() if k not in {"chunk_uid", "text"}
+                    k: v
+                    for k, v in (hit.payload or {}).items()
+                    if k not in {"chunk_uid", "text"}
                 },
             )
             for hit in results.points
@@ -129,4 +140,6 @@ class QdrantStore:
     async def delete(self, chunk_uid: str) -> None:
         assert self._client is not None
         point_id = str(uuid5(NAMESPACE_URL, chunk_uid))
-        await self._client.delete(collection_name=self._collection, points_selector=[point_id])
+        await self._client.delete(
+            collection_name=self._collection, points_selector=[point_id]
+        )

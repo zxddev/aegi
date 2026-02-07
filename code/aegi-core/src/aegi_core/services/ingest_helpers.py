@@ -68,5 +68,6 @@ async def semantic_search(
     embedding = await llm.embed(query)
     results = await qdrant.search(embedding, limit=limit)
     return [
-        {"chunk_uid": r.chunk_uid, "text": r.text, "score": r.score, **r.metadata} for r in results
+        {"chunk_uid": r.chunk_uid, "text": r.text, "score": r.score, **r.metadata}
+        for r in results
     ]

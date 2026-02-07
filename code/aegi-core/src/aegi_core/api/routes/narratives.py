@@ -20,8 +20,14 @@ from aegi_core.api.deps import get_db_session
 from aegi_core.contracts.schemas import NarrativeV1, SourceClaimV1
 from aegi_core.db.models.action import Action
 from aegi_core.db.models.narrative import Narrative
-from aegi_core.services.coordination_detector import CoordinationSignalV1, detect_coordination
-from aegi_core.services.narrative_builder import build_narratives_with_uids, trace_narrative
+from aegi_core.services.coordination_detector import (
+    CoordinationSignalV1,
+    detect_coordination,
+)
+from aegi_core.services.narrative_builder import (
+    build_narratives_with_uids,
+    trace_narrative,
+)
 
 
 router = APIRouter(prefix="/cases/{case_uid}/narratives", tags=["narratives"])

@@ -110,7 +110,12 @@ def test_narrative_v1_roundtrip():
 
 
 def test_modality_enum_values():
-    assert set(Modality) == {Modality.TEXT, Modality.IMAGE, Modality.VIDEO, Modality.AUDIO}
+    assert set(Modality) == {
+        Modality.TEXT,
+        Modality.IMAGE,
+        Modality.VIDEO,
+        Modality.AUDIO,
+    }
 
 
 # -- Multimodal fields are nullable (task 4.2) ---------------------------------

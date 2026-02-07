@@ -102,12 +102,17 @@ async def align_entities(
         trace_id=trace_id,
     )
 
-    if budget_context.remaining_cost_usd is not None and budget_context.remaining_cost_usd <= 0:
+    if (
+        budget_context.remaining_cost_usd is not None
+        and budget_context.remaining_cost_usd <= 0
+    ):
         degraded = DegradedOutput(
             reason=DegradedReason.BUDGET_EXCEEDED,
             detail=f"Budget exhausted for model {model_id}",
         )
-        return AlignEntitiesResponse(links=[], failures=[], trace_id=trace_id, degraded=degraded)
+        return AlignEntitiesResponse(
+            links=[], failures=[], trace_id=trace_id, degraded=degraded
+        )
 
     candidates = _generate_candidates(claims)
     total_tokens = 0
@@ -132,7 +137,9 @@ async def align_entities(
         group_score: float | None = None
         group_explanation = ""
         if llm is not None and len(group) >= 2:
-            quotes_str = "\n".join(f"- [{c.language or 'und'}] {c.quote[:200]}" for c in group)
+            quotes_str = "\n".join(
+                f"- [{c.language or 'und'}] {c.quote[:200]}" for c in group
+            )
             try:
                 resp = await llm.invoke(
                     f"Are these text fragments referring to the same entity? "
@@ -150,7 +157,9 @@ async def align_entities(
         for claim in group:
             try:
                 score = (
-                    group_score if group_score is not None else (0.85 if len(group) == 2 else 0.6)
+                    group_score
+                    if group_score is not None
+                    else (0.85 if len(group) == 2 else 0.6)
                 )
                 if group_score is None:
                     total_tokens += len(claim.quote) // 4

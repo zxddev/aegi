@@ -23,7 +23,9 @@ class Judgment(Base):
     )
 
     title: Mapped[str] = mapped_column(sa.Text(), nullable=False)
-    assertion_uids: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    assertion_uids: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, nullable=False
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False

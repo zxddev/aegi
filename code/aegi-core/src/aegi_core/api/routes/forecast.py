@@ -125,7 +125,9 @@ async def generate_forecast(
     assertions = [_assertion_to_v1(r) for r in rows_a.scalars().all()]
 
     # 查询 narratives（soft dep）
-    rows_n = await session.execute(sa.select(Narrative).where(Narrative.case_uid == case_uid))
+    rows_n = await session.execute(
+        sa.select(Narrative).where(Narrative.case_uid == case_uid)
+    )
     narratives_v1: list[NarrativeV1] = []
     for n in rows_n.scalars().all():
         narratives_v1.append(

@@ -29,7 +29,11 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # startup
-        from aegi_core.api.deps import get_neo4j_store, get_qdrant_store, get_minio_store
+        from aegi_core.api.deps import (
+            get_neo4j_store,
+            get_qdrant_store,
+            get_minio_store,
+        )
 
         neo = get_neo4j_store()
         await neo.connect()
@@ -63,7 +67,9 @@ def create_app() -> FastAPI:
     app.include_router(orchestration_router)
 
     @app.exception_handler(AegiHTTPError)
-    async def aegi_http_error_handler(request: Request, exc: AegiHTTPError) -> JSONResponse:
+    async def aegi_http_error_handler(
+        request: Request, exc: AegiHTTPError
+    ) -> JSONResponse:
         pd = exc.to_problem_detail()
         content = pd.model_dump()
         # 向后兼容：保留旧 message/details 字段

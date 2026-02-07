@@ -29,7 +29,11 @@ class _FakeToolClient:
                 "allowed": True,
                 "reason": "allowed",
                 "domain": "example.com",
-                "robots": {"checked": False, "allowed": None, "reason": "p0_fixtures_only"},
+                "robots": {
+                    "checked": False,
+                    "allowed": None,
+                    "reason": "p0_fixtures_only",
+                },
             },
         }
 
@@ -48,7 +52,11 @@ def test_get_tool_trace_by_uid_returns_structured_fields() -> None:
 
         called = client.post(
             f"/cases/{case_uid}/tools/archive_url",
-            json={"url": "https://example.com/x", "actor_id": "user_1", "rationale": "call"},
+            json={
+                "url": "https://example.com/x",
+                "actor_id": "user_1",
+                "rationale": "call",
+            },
         )
         tool_trace_uid = called.json()["tool_trace_uid"]
 

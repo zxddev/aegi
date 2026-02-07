@@ -49,7 +49,9 @@ async def extract_from_chunk(
     budget: BudgetContext,
     model_id: str = "default",
     trace_id: str | None = None,
-) -> tuple[list[SourceClaimV1], ActionV1, ToolTraceV1, LLMInvocationResult | DegradedOutput]:
+) -> tuple[
+    list[SourceClaimV1], ActionV1, ToolTraceV1, LLMInvocationResult | DegradedOutput
+]:
     """Extract SourceClaimV1 instances from a single chunk.
 
     Args:

@@ -37,7 +37,9 @@ class AdversarialResult:
     """三角对抗的完整输出。"""
 
     defense: AgentVerdict = field(default_factory=lambda: AgentVerdict(role="defense"))
-    prosecution: AgentVerdict = field(default_factory=lambda: AgentVerdict(role="prosecution"))
+    prosecution: AgentVerdict = field(
+        default_factory=lambda: AgentVerdict(role="prosecution")
+    )
     judge: AgentVerdict = field(default_factory=lambda: AgentVerdict(role="judge"))
     conflict_summary: str = ""
     grounding_level: GroundingLevel = GroundingLevel.HYPOTHESIS

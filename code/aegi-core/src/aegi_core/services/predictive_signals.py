@@ -46,7 +46,9 @@ def score_indicator(series: IndicatorSeriesV1) -> SignalScore:
         return SignalScore(indicator_name=series.name)
 
     # 简单差分趋势
-    deltas = [series.values[i] - series.values[i - 1] for i in range(1, len(series.values))]
+    deltas = [
+        series.values[i] - series.values[i - 1] for i in range(1, len(series.values))
+    ]
     avg_delta = sum(deltas) / len(deltas)
 
     if avg_delta > 0.05:

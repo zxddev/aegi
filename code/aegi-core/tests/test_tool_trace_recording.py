@@ -30,7 +30,11 @@ class _FakeToolClient:
                 "allowed": True,
                 "reason": "allowed",
                 "domain": "example.com",
-                "robots": {"checked": False, "allowed": None, "reason": "p0_fixtures_only"},
+                "robots": {
+                    "checked": False,
+                    "allowed": None,
+                    "reason": "p0_fixtures_only",
+                },
             },
         }
 
@@ -81,7 +85,11 @@ def test_core_records_tool_trace_for_gateway_call() -> None:
 
         called = client.post(
             f"/cases/{case_uid}/tools/archive_url",
-            json={"url": "https://example.com/x", "actor_id": "user_1", "rationale": "call"},
+            json={
+                "url": "https://example.com/x",
+                "actor_id": "user_1",
+                "rationale": "call",
+            },
         )
         assert called.status_code == 200
         body = called.json()
@@ -92,7 +100,9 @@ def test_core_records_tool_trace_for_gateway_call() -> None:
         with engine.begin() as conn:
             row = (
                 conn.execute(
-                    sa.text("select uid, tool_name, status from tool_traces where uid = :uid"),
+                    sa.text(
+                        "select uid, tool_name, status from tool_traces where uid = :uid"
+                    ),
                     {"uid": body["tool_trace_uid"]},
                 )
                 .mappings()
@@ -113,14 +123,22 @@ def test_core_records_tool_trace_when_gateway_denies() -> None:
 
         created = client.post(
             "/cases",
-            json={"title": "Trace case denied", "actor_id": "user_1", "rationale": "init"},
+            json={
+                "title": "Trace case denied",
+                "actor_id": "user_1",
+                "rationale": "init",
+            },
         )
         assert created.status_code == 201
         case_uid = created.json()["case_uid"]
 
         called = client.post(
             f"/cases/{case_uid}/tools/archive_url",
-            json={"url": "https://example.com/x", "actor_id": "user_1", "rationale": "call"},
+            json={
+                "url": "https://example.com/x",
+                "actor_id": "user_1",
+                "rationale": "call",
+            },
         )
         assert called.status_code == 403
         body = called.json()
@@ -155,13 +173,21 @@ def test_core_records_tool_trace_when_rate_limited() -> None:
         client = TestClient(app)
         created = client.post(
             "/cases",
-            json={"title": "Trace case rate limit", "actor_id": "user_1", "rationale": "init"},
+            json={
+                "title": "Trace case rate limit",
+                "actor_id": "user_1",
+                "rationale": "init",
+            },
         )
         case_uid = created.json()["case_uid"]
 
         called = client.post(
             f"/cases/{case_uid}/tools/archive_url",
-            json={"url": "https://example.com/x", "actor_id": "user_1", "rationale": "call"},
+            json={
+                "url": "https://example.com/x",
+                "actor_id": "user_1",
+                "rationale": "call",
+            },
         )
         assert called.status_code == 429
         assert called.json()["error_code"] == "rate_limited"
@@ -194,13 +220,21 @@ def test_core_records_tool_trace_when_gateway_errors() -> None:
         client = TestClient(app)
         created = client.post(
             "/cases",
-            json={"title": "Trace case error", "actor_id": "user_1", "rationale": "init"},
+            json={
+                "title": "Trace case error",
+                "actor_id": "user_1",
+                "rationale": "init",
+            },
         )
         case_uid = created.json()["case_uid"]
 
         called = client.post(
             f"/cases/{case_uid}/tools/archive_url",
-            json={"url": "https://example.com/x", "actor_id": "user_1", "rationale": "call"},
+            json={
+                "url": "https://example.com/x",
+                "actor_id": "user_1",
+                "rationale": "call",
+            },
         )
         assert called.status_code == 502
         assert called.json()["error_code"] == "gateway_error"

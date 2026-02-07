@@ -8,7 +8,11 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aegi_core.api.deps import get_db_session, get_tool_client
-from aegi_core.services import case_service, fixture_import_service, tool_archive_service
+from aegi_core.services import (
+    case_service,
+    fixture_import_service,
+    tool_archive_service,
+)
 from aegi_core.services.tool_client import ToolClient
 
 router = APIRouter(prefix="/cases", tags=["cases"])

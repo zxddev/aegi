@@ -43,7 +43,14 @@ _EVENT_KEYWORDS = frozenset(
 
 _DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 
-REQUIRED_ASSERTION_FIELDS = {"uid", "case_uid", "kind", "value", "source_claim_uids", "created_at"}
+REQUIRED_ASSERTION_FIELDS = {
+    "uid",
+    "case_uid",
+    "kind",
+    "value",
+    "source_claim_uids",
+    "created_at",
+}
 
 
 def _validate_assertion_schema(assertion: AssertionV1) -> ProblemDetail | None:
@@ -236,7 +243,10 @@ def build_graph(
         case_uid=case_uid,
         action_uid=action.uid,
         tool_name="kg_mapper",
-        request={"assertion_count": len(assertions), "ontology_version": ontology_version},
+        request={
+            "assertion_count": len(assertions),
+            "ontology_version": ontology_version,
+        },
         response={
             "entity_count": len(entities),
             "event_count": len(events),

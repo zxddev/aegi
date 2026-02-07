@@ -126,7 +126,12 @@ class TestQuality001NormalScoring:
         scenario = _load_scenario("defgeo-quality-001")
         report = score_confidence(_build_input(scenario))
         dim_names = {d.name for d in report.confidence_breakdown}
-        assert dim_names == {"evidence_strength", "coverage", "consistency", "freshness"}
+        assert dim_names == {
+            "evidence_strength",
+            "coverage",
+            "consistency",
+            "freshness",
+        }
 
     def test_bias_flags_count_matches(self) -> None:
         scenario = _load_scenario("defgeo-quality-001")
@@ -141,7 +146,9 @@ class TestQuality001NormalScoring:
     def test_evidence_diversity(self) -> None:
         scenario = _load_scenario("defgeo-quality-001")
         report = score_confidence(_build_input(scenario))
-        assert report.evidence_diversity >= scenario["expected"]["evidence_diversity_gte"]
+        assert (
+            report.evidence_diversity >= scenario["expected"]["evidence_diversity_gte"]
+        )
 
     def test_trace_id_present(self) -> None:
         scenario = _load_scenario("defgeo-quality-001")
@@ -213,7 +220,9 @@ class TestQuality003PendingInputs:
     def test_consistency_dimension_pending(self) -> None:
         scenario = _load_scenario("defgeo-quality-003")
         report = score_confidence(_build_input(scenario))
-        consistency = next(d for d in report.confidence_breakdown if d.name == "consistency")
+        consistency = next(
+            d for d in report.confidence_breakdown if d.name == "consistency"
+        )
         assert consistency.status == "pending"
 
     def test_blindspots_detected(self) -> None:
@@ -244,7 +253,9 @@ class TestQuality003PendingInputs:
         scenario = _load_scenario("defgeo-quality-003")
         report = score_confidence(_build_input(scenario))
         assert report.status != "complete"
-        complete_dims = [d for d in report.confidence_breakdown if d.status == "complete"]
+        complete_dims = [
+            d for d in report.confidence_breakdown if d.status == "complete"
+        ]
         if complete_dims:
             expected_avg = sum(d.score for d in complete_dims) / len(complete_dims)
             assert abs(report.confidence_score - round(expected_avg, 4)) < 0.001
@@ -278,4 +289,9 @@ class TestQualityEdgeCases:
         scenario = _load_scenario("defgeo-quality-003")
         report = score_confidence(_build_input(scenario))
         dim_names = {d.name for d in report.confidence_breakdown}
-        assert dim_names == {"evidence_strength", "coverage", "consistency", "freshness"}
+        assert dim_names == {
+            "evidence_strength",
+            "coverage",
+            "consistency",
+            "freshness",
+        }

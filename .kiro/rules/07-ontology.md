@@ -8,8 +8,8 @@
 
 1. **Evidence-first + Archive-first**：任何进入对象层的断言/判断都必须绑定来源声称，再由 SourceClaim 回溯证据链。证据必须追溯到 Artifact 快照（固化版本），否则视为不合格。
 2. **SourceClaim-first**：SourceClaim 是平台"可追责语义"的最小单位。先有 SourceClaim，再有 Assertion，再有 Judgment。不允许跳过。
-3. **Action-only writes**：所有写入只能通过 Action 发生（校验 → 权限 → 审计 → 可回滚）。禁止绕过 Action 直接改数据库。
-4. **工具外联统一走 Gateway**：外部访问必须经 `aegi-mcp-gateway`，策略可审计。
+3. **Action-only writes**：所有业务数据写入只能通过 Action 发生（校验 → 权限 → 审计 → 可回滚）。禁止绕过 Action 直接改业务表。Migration、seed data、系统级写入不受此限。
+4. **工具外联统一走 Gateway**：编写外部访问代码时，必须通过 `aegi-mcp-gateway` 的接口调用，不允许直接 `httpx.get()` 外部 URL。
 5. **派生索引可重建**：权威源在 PostgreSQL + 对象存储，所有派生索引（图谱、搜索、物化视图）必须可从权威源重建。
 
 ## 2. 本体设计原则
@@ -66,5 +66,5 @@ Action 同时是 AI Agent 的工具面——设计时要考虑人类和 Agent �
 
 - 优先"加法"：补字段、增模型、增模块。
 - 谨慎"改法"：仅在局部复杂度过高时做小重构。
-- 禁止"重写"：不推倒现有证据链主干。
+- "重写"需要论证：重写前必须说明现有设计的具体问题、新方案的优势、以及数据迁移策略。
 - 核心竞争力不是"有 AI"，而是"AI 输出可回源、可审计、可回放、可质疑"。

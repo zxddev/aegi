@@ -84,7 +84,9 @@ def _evidence_strength(
 ) -> ConfidenceDimension:
     """独立来源数 × 平均置信度。"""
     if not assertions:
-        return ConfidenceDimension(name="evidence_strength", score=0.0, detail="no assertions")
+        return ConfidenceDimension(
+            name="evidence_strength", score=0.0, detail="no assertions"
+        )
     unique_sources = {sc.attributed_to for sc in source_claims if sc.attributed_to}
     avg_conf = sum(a.confidence or 0.0 for a in assertions) / len(assertions)
     source_factor = min(len(unique_sources) / 3.0, 1.0)
@@ -131,10 +133,14 @@ def _consistency(
             detail="forecast unavailable",
         )
     if not hypotheses:
-        return ConfidenceDimension(name="consistency", score=0.0, detail="no hypotheses")
+        return ConfidenceDimension(
+            name="consistency", score=0.0, detail="no hypotheses"
+        )
     confs = [h.confidence for h in hypotheses if h.confidence is not None]
     if not confs:
-        return ConfidenceDimension(name="consistency", score=0.5, detail="no confidence values")
+        return ConfidenceDimension(
+            name="consistency", score=0.5, detail="no confidence values"
+        )
     spread = max(confs) - min(confs)
     score = round(1.0 - min(spread, 1.0), 4)
     return ConfidenceDimension(
@@ -147,7 +153,9 @@ def _consistency(
 def _freshness(source_claims: list[SourceClaimV1]) -> ConfidenceDimension:
     """时效性：最新 source_claim 距今天数。"""
     if not source_claims:
-        return ConfidenceDimension(name="freshness", score=0.0, detail="no source claims")
+        return ConfidenceDimension(
+            name="freshness", score=0.0, detail="no source claims"
+        )
     now = datetime.now(timezone.utc)
     newest = max(sc.created_at for sc in source_claims)
     days_old = (now - newest).total_seconds() / 86400.0
@@ -190,7 +198,9 @@ def score_confidence(inp: QualityInput) -> QualityReportV1:
     has_pending = any(d.status == DimensionStatus.PENDING for d in dims)
     complete_dims = [d for d in dims if d.status == DimensionStatus.COMPLETE]
     avg_score = (
-        round(sum(d.score for d in complete_dims) / len(complete_dims), 4) if complete_dims else 0.0
+        round(sum(d.score for d in complete_dims) / len(complete_dims), 4)
+        if complete_dims
+        else 0.0
     )
 
     if not inp.assertions and not inp.source_claims:

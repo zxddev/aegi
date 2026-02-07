@@ -68,7 +68,9 @@ class MinioStore:
 
     async def delete(self, object_name: str) -> None:
         assert self._client is not None
-        await anyio.to_thread.run_sync(self._client.remove_object, self.bucket, object_name)
+        await anyio.to_thread.run_sync(
+            self._client.remove_object, self.bucket, object_name
+        )
 
     async def exists(self, object_name: str) -> bool:
         assert self._client is not None

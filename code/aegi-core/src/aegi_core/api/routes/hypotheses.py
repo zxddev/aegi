@@ -188,10 +188,14 @@ async def score_hypothesis(
     if hyp is None:
         raise not_found("Hypothesis", hypothesis_uid)
 
-    rows_a = await session.execute(sa.select(Assertion).where(Assertion.case_uid == case_uid))
+    rows_a = await session.execute(
+        sa.select(Assertion).where(Assertion.case_uid == case_uid)
+    )
     assertions = [_assertion_to_v1(r) for r in rows_a.scalars().all()]
 
-    rows_sc = await session.execute(sa.select(SourceClaim).where(SourceClaim.case_uid == case_uid))
+    rows_sc = await session.execute(
+        sa.select(SourceClaim).where(SourceClaim.case_uid == case_uid)
+    )
     source_claims = [_sc_to_v1(r) for r in rows_sc.scalars().all()]
 
     result = analyze_hypothesis(hyp.label, assertions, source_claims)

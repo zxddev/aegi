@@ -47,7 +47,8 @@ def test_import_fixture_creates_navigable_evidence_chain() -> None:
     artifacts = client.get(f"/cases/{case_uid}/artifacts")
     assert artifacts.status_code == 200
     assert any(
-        a["artifact_version_uid"] == body["artifact_version_uid"] for a in artifacts.json()["items"]
+        a["artifact_version_uid"] == body["artifact_version_uid"]
+        for a in artifacts.json()["items"]
     )
 
     ev_uid = body["evidence_uids"][0]

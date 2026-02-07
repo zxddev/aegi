@@ -72,7 +72,9 @@ def _confirmation_bias(
     assertion_uid_set = {a.uid for a in assertions}
     flags: list[BiasFlag] = []
     for h in hypotheses:
-        supporting = [uid for uid in h.supporting_assertion_uids if uid in assertion_uid_set]
+        supporting = [
+            uid for uid in h.supporting_assertion_uids if uid in assertion_uid_set
+        ]
         if len(supporting) >= 2 and len(supporting) == len(h.supporting_assertion_uids):
             sc_uids: list[str] = []
             for a in assertions:

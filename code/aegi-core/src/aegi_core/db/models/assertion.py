@@ -25,7 +25,9 @@ class Assertion(Base):
 
     kind: Mapped[str] = mapped_column(sa.String(32), nullable=False)
     value: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
-    source_claim_uids: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    source_claim_uids: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, nullable=False
+    )
     confidence: Mapped[float | None] = mapped_column(sa.Float())
     modality: Mapped[str | None] = mapped_column(sa.String(32))
     segment_ref: Mapped[str | None] = mapped_column(sa.String(128))

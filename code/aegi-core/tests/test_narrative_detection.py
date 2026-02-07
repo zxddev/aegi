@@ -46,7 +46,9 @@ class TestNarrative001NaturalPropagation:
 
     def test_trace_returns_time_ordered_chain(self) -> None:
         claims = _load_claims("defgeo-narrative-001")
-        narratives, uid_map = build_narratives_with_uids(claims, time_window_hours=168.0)
+        narratives, uid_map = build_narratives_with_uids(
+            claims, time_window_hours=168.0
+        )
         assert len(narratives) == 1
         nar = narratives[0]
         chain = trace_narrative(nar.uid, narratives, claims, uid_map)
@@ -83,7 +85,9 @@ class TestNarrative002CoordinatedPropagation:
     def test_coordination_detected_with_explanation(self) -> None:
         claims = _load_claims("defgeo-narrative-002")
         _, uid_map = build_narratives_with_uids(claims, time_window_hours=168.0)
-        signals = detect_coordination(uid_map, claims, burst_window_hours=1.0, min_cluster_size=3)
+        signals = detect_coordination(
+            uid_map, claims, burst_window_hours=1.0, min_cluster_size=3
+        )
         assert len(signals) >= 1
         sig = signals[0]
         assert sig.similarity_score > 0.4
@@ -109,9 +113,13 @@ class TestNarrative003ConflictingNarratives:
 
     def test_conflicting_narratives_coexist(self) -> None:
         claims = _load_claims("defgeo-narrative-003")
-        narratives = build_narratives(claims, time_window_hours=168.0, similarity_threshold=0.35)
+        narratives = build_narratives(
+            claims, time_window_hours=168.0, similarity_threshold=0.35
+        )
         # 正反叙事不应被合并
-        assert len(narratives) >= 2, f"Expected >=2 conflicting narratives, got {len(narratives)}"
+        assert len(narratives) >= 2, (
+            f"Expected >=2 conflicting narratives, got {len(narratives)}"
+        )
 
     def test_each_narrative_traceable(self) -> None:
         claims = _load_claims("defgeo-narrative-003")

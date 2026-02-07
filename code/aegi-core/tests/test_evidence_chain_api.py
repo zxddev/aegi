@@ -127,7 +127,10 @@ def test_p0_evidence_chain_navigation_endpoints() -> None:
 
     artifacts = client.get(f"/cases/{case_uid}/artifacts")
     assert artifacts.status_code == 200
-    assert any(a["artifact_version_uid"] == artifact_version_uid for a in artifacts.json()["items"])
+    assert any(
+        a["artifact_version_uid"] == artifact_version_uid
+        for a in artifacts.json()["items"]
+    )
 
     av = client.get(f"/artifacts/versions/{artifact_version_uid}")
     assert av.status_code == 200

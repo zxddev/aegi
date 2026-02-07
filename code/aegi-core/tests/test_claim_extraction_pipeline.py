@@ -15,7 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from aegi_core.contracts.llm_governance import BudgetContext, DegradedOutput, LLMInvocationResult
+from aegi_core.contracts.llm_governance import (
+    BudgetContext,
+    DegradedOutput,
+    LLMInvocationResult,
+)
 from aegi_core.contracts.schemas import SourceClaimV1
 from aegi_core.services.claim_extractor import extract_from_chunk
 
@@ -163,7 +167,10 @@ async def test_grounding_rate() -> None:
         matching = [
             sc
             for sc in fixture["source_claims"]
-            if any(sel.get("exact") in chunk.get("text", "") for sel in sc.get("selectors", []))
+            if any(
+                sel.get("exact") in chunk.get("text", "")
+                for sel in sc.get("selectors", [])
+            )
         ]
         if not matching:
             matching = fixture["source_claims"][:1]

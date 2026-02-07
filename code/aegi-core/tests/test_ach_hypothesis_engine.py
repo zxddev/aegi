@@ -85,7 +85,8 @@ class TestACH001SupportDominant:
 
     def test_no_contradicting(self, result: ACHResult, scenario: dict) -> None:
         assert (
-            len(result.contradicting_assertion_uids) == scenario["expected"]["contradicting_count"]
+            len(result.contradicting_assertion_uids)
+            == scenario["expected"]["contradicting_count"]
         )
 
     def test_no_gaps(self, result: ACHResult) -> None:
@@ -105,10 +106,14 @@ class TestACH001SupportDominant:
         assert result.coverage_score is not None
         assert result.confidence is not None
 
-    def test_adversarial_preserves_disagreement(self, result: ACHResult, scenario: dict) -> None:
+    def test_adversarial_preserves_disagreement(
+        self, result: ACHResult, scenario: dict
+    ) -> None:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
-        adv, action, trace = evaluate_adversarial(result, assertions, claims, case_uid="case_test")
+        adv, action, trace = evaluate_adversarial(
+            result, assertions, claims, case_uid="case_test"
+        )
         assert adv.defense.role == "defense"
         assert adv.prosecution.role == "prosecution"
         assert adv.judge.role == "judge"
@@ -149,10 +154,14 @@ class TestACH002ContradictionDominant:
         assert result.contradicting_assertion_uids is not None
         assert result.gap_list is not None
 
-    def test_adversarial_conflict_preserved(self, result: ACHResult, scenario: dict) -> None:
+    def test_adversarial_conflict_preserved(
+        self, result: ACHResult, scenario: dict
+    ) -> None:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
-        adv, _, _ = evaluate_adversarial(result, assertions, claims, case_uid="case_test")
+        adv, _, _ = evaluate_adversarial(
+            result, assertions, claims, case_uid="case_test"
+        )
         # 反证占优时 prosecution 必须有内容
         assert len(adv.prosecution.assertion_uids) > 0
         # judge 必须包含裁决依据
@@ -194,7 +203,9 @@ class TestACH003InsufficientEvidence:
     def test_adversarial_gaps_explicit(self, result: ACHResult, scenario: dict) -> None:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
-        adv, _, _ = evaluate_adversarial(result, assertions, claims, case_uid="case_test")
+        adv, _, _ = evaluate_adversarial(
+            result, assertions, claims, case_uid="case_test"
+        )
         # judge 必须显式列出证据缺口
         assert len(adv.judge.gaps) > 0
 
@@ -239,5 +250,7 @@ class TestAuditTraceability:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
         ach = analyze_hypothesis(scenario["hypothesis"], assertions, claims)
-        _, _, trace = evaluate_adversarial(ach, assertions, claims, case_uid="case_test")
+        _, _, trace = evaluate_adversarial(
+            ach, assertions, claims, case_uid="case_test"
+        )
         assert "prompt_version" in trace.policy

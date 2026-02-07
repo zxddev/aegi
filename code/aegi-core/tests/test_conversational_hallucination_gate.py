@@ -12,7 +12,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from fastapi.testclient import TestClient
 
-from aegi_core.api.main import app
+from aegi_core.api.main import create_app
 from aegi_core.contracts.llm_governance import GroundingLevel, grounding_gate
 from aegi_core.db.base import Base
 from aegi_core.services.answer_renderer import EvidenceCitation, render_answer
@@ -84,7 +84,7 @@ def test_render_answer_inference_without_citations_downgrades() -> None:
 def test_api_chat_no_evidence_returns_cannot_answer() -> None:
     """对空 case 提问 -> cannot_answer_reason 非空，answer_type != FACT。"""
     _ensure_tables()
-    client = TestClient(app)
+    client = TestClient(create_app())
 
     created = client.post(
         "/cases",

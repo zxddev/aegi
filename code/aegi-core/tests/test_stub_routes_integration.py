@@ -84,7 +84,9 @@ class TestNarrativesRoutes:
         assert data["action_uid"].startswith("act_")
         assert "narratives" in data
 
-    async def test_detect_coordination_returns_action_uid(self, client: AsyncClient) -> None:
+    async def test_detect_coordination_returns_action_uid(
+        self, client: AsyncClient
+    ) -> None:
         case_uid = await _create_case(client, "nar-detect")
         resp = await client.post(
             f"/cases/{case_uid}/narratives/detect_coordination",
@@ -102,7 +104,9 @@ class TestNarrativesRoutes:
 
 
 class TestKGRoutes:
-    async def test_build_from_assertions_returns_action_uid(self, client: AsyncClient) -> None:
+    async def test_build_from_assertions_returns_action_uid(
+        self, client: AsyncClient
+    ) -> None:
         case_uid = await _create_case(client, "kg-build")
         now = datetime.now(timezone.utc).isoformat()
         resp = await client.post(
@@ -113,7 +117,10 @@ class TestKGRoutes:
                         "uid": "a1",
                         "case_uid": case_uid,
                         "kind": "event",
-                        "value": {"attributed_to": "Actor-A", "rationale": "deployment test"},
+                        "value": {
+                            "attributed_to": "Actor-A",
+                            "rationale": "deployment test",
+                        },
                         "source_claim_uids": [],
                         "created_at": now,
                     }

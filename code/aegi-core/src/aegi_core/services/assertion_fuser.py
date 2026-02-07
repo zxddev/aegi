@@ -60,7 +60,9 @@ def _detect_value_conflict(a: SourceClaimV1, b: SourceClaimV1) -> ConflictRecord
     return None
 
 
-def _detect_modality_conflict(a: SourceClaimV1, b: SourceClaimV1) -> ConflictRecord | None:
+def _detect_modality_conflict(
+    a: SourceClaimV1, b: SourceClaimV1
+) -> ConflictRecord | None:
     """Detect modality conflict: e.g. confirmed vs denied on same subject."""
     if not (a.attributed_to and b.attributed_to and a.attributed_to == b.attributed_to):
         return None
@@ -103,7 +105,9 @@ def fuse_claims(
     now = datetime.now(timezone.utc)
 
     if not claims:
-        err = validation_error("source_claim_uids must not be empty", field="source_claim_uids")
+        err = validation_error(
+            "source_claim_uids must not be empty", field="source_claim_uids"
+        )
         action = ActionV1(
             uid=uuid.uuid4().hex,
             case_uid=case_uid,

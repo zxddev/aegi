@@ -18,7 +18,7 @@
 | `00-mandatory.md` | 强制规则：先技能后行动、先证据后结论、深度思考、工具纪律、双能力编排、主流程、作者标记 |
 | `01-tools.md` | MCP/工具使用手册与操作细则 |
 | `02-python.md` | Python 开发规范（Google Style + 项目约束 + orchestkit skills 参考） |
-| `03-design.md` | 设计理念 + 代码质量准则（Linus 风格） |
+| `03-design.md` | 设计理念（核心哲学 + Linus 式分析框架） |
 | `04-api-database.md` | REST/GraphQL API 设计 + PostgreSQL 表设计 |
 | `05-langgraph.md` | LangGraph 开发规范（orchestkit 10 个 langgraph skills 参考） |
 | `06-code-quality.md` | 代码质量与审查规范（orchestkit + beagle skills 参考） |
@@ -32,7 +32,7 @@
 | orchestkit | `.kiro/skills/orchestkit/` | 16 | LangGraph 开发 + Python 高级 + 架构 + 审查框架 |
 | beagle | `.kiro/skills/beagle/` | 32 | 代码质量审查（Python/AI/架构/LLM 检测） |
 | designing-ontologies | `.kiro/skills/designing-ontologies/` | 1 | Palantir 本体设计参考 |
-| OpenSpec | `.kiro/skills/openspec/` | 9 | 需求-任务-验收工件与变更生命周期 |
+| OpenSpec | `.kiro/skills/openspec/` | 10 | 需求-任务-验收工件与变更生命周期 |
 
 ## 核心原则
 

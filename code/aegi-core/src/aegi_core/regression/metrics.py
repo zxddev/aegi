@@ -70,13 +70,15 @@ def compute_metrics_for_fixture(fixtures_root: Path, manifest_item: dict) -> dic
     else:
         text = ""
 
-    chunks = json.loads((fixtures_root / rel_chunks).read_text(encoding="utf-8"))["chunks"]
-    source_claims = json.loads((fixtures_root / rel_source_claims).read_text(encoding="utf-8"))[
-        "source_claims"
+    chunks = json.loads((fixtures_root / rel_chunks).read_text(encoding="utf-8"))[
+        "chunks"
     ]
-    assertions = json.loads((fixtures_root / rel_assertions).read_text(encoding="utf-8"))[
-        "assertions"
-    ]
+    source_claims = json.loads(
+        (fixtures_root / rel_source_claims).read_text(encoding="utf-8")
+    )["source_claims"]
+    assertions = json.loads(
+        (fixtures_root / rel_assertions).read_text(encoding="utf-8")
+    )["assertions"]
 
     # Anchor locate rate: fraction of chunks whose TextQuoteSelector exact can be found.
     total_anchors = len(chunks)
@@ -119,7 +121,9 @@ def compute_metrics_for_fixture(fixtures_root: Path, manifest_item: dict) -> dic
         if grounded:
             grounded_assertions += 1
 
-    claim_grounding_rate = (grounded_assertions / total_assertions) if total_assertions else 0.0
+    claim_grounding_rate = (
+        (grounded_assertions / total_assertions) if total_assertions else 0.0
+    )
 
     metrics = FixtureMetrics(
         anchor_locate_rate=anchor_locate_rate,

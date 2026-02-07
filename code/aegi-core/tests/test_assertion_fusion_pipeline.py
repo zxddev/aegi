@@ -57,7 +57,9 @@ def test_fuse_normal_scenario() -> None:
         for sc in sc_data["source_claims"]
     ]
 
-    assertions, conflict_set, action, tool_trace = fuse_claims(claims, case_uid="case_test")
+    assertions, conflict_set, action, tool_trace = fuse_claims(
+        claims, case_uid="case_test"
+    )
 
     assert len(assertions) > 0
     for a in assertions:
@@ -95,7 +97,9 @@ def test_fuse_conflict_scenario() -> None:
         for sc in sc_data["source_claims"]
     ]
 
-    assertions, conflict_set, action, tool_trace = fuse_claims(claims, case_uid="case_test")
+    assertions, conflict_set, action, tool_trace = fuse_claims(
+        claims, case_uid="case_test"
+    )
 
     assert len(assertions) > 0
     assert len(conflict_set) > 0, "Contradicting claims MUST produce conflict_set"
@@ -152,7 +156,9 @@ def test_fuse_preserves_conflicts_no_overwrite() -> None:
         attributed_to="Exampleland",
     )
 
-    assertions, conflict_set, _, _ = fuse_claims([claim_a, claim_b], case_uid="case_preserve")
+    assertions, conflict_set, _, _ = fuse_claims(
+        [claim_a, claim_b], case_uid="case_preserve"
+    )
 
     # 两条冲突 claim 都必须出现在 assertion 的 source_claim_uids 中
     all_source_uids = set()

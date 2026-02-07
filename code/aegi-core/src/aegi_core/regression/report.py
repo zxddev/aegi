@@ -37,8 +37,12 @@ def generate_regression_report(fixtures_root: Path) -> dict:
             }
         )
 
-    anchor_min = min((f["metrics"]["anchor_locate_rate"] for f in per_fixture), default=0.0)
-    grounding_min = min((f["metrics"]["claim_grounding_rate"] for f in per_fixture), default=0.0)
+    anchor_min = min(
+        (f["metrics"]["anchor_locate_rate"] for f in per_fixture), default=0.0
+    )
+    grounding_min = min(
+        (f["metrics"]["claim_grounding_rate"] for f in per_fixture), default=0.0
+    )
 
     return {
         "version": 1,
@@ -87,6 +91,8 @@ def write_regression_report(fixtures_root: Path, out_dir: Path) -> dict[str, str
         json.dumps(report, indent=2, sort_keys=True, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
-    (out_dir / text_name).write_text(render_regression_report_text(report), encoding="utf-8")
+    (out_dir / text_name).write_text(
+        render_regression_report_text(report), encoding="utf-8"
+    )
 
     return {"json": json_name, "text": text_name}

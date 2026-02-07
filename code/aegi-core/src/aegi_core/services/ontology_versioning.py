@@ -100,7 +100,9 @@ def _compare_type_lists(
     return changes
 
 
-def compute_compatibility(from_ver: str, to_ver: str) -> CompatibilityReport | ProblemDetail:
+def compute_compatibility(
+    from_ver: str, to_ver: str
+) -> CompatibilityReport | ProblemDetail:
     old = _registry.get(from_ver)
     new = _registry.get(to_ver)
     if not old:
@@ -121,9 +123,13 @@ def compute_compatibility(from_ver: str, to_ver: str) -> CompatibilityReport | P
         )
 
     changes: list[OntologyChange] = []
-    changes.extend(_compare_type_lists(old.entity_types, new.entity_types, "entity_types"))
+    changes.extend(
+        _compare_type_lists(old.entity_types, new.entity_types, "entity_types")
+    )
     changes.extend(_compare_type_lists(old.event_types, new.event_types, "event_types"))
-    changes.extend(_compare_type_lists(old.relation_types, new.relation_types, "relation_types"))
+    changes.extend(
+        _compare_type_lists(old.relation_types, new.relation_types, "relation_types")
+    )
 
     if not changes:
         overall = ChangeLevel.COMPATIBLE
@@ -137,7 +143,9 @@ def compute_compatibility(from_ver: str, to_ver: str) -> CompatibilityReport | P
     auto_allowed = overall != ChangeLevel.BREAKING
     migration_plan = None
     if overall == ChangeLevel.BREAKING:
-        breaking_items = [c.description for c in changes if c.level == ChangeLevel.BREAKING]
+        breaking_items = [
+            c.description for c in changes if c.level == ChangeLevel.BREAKING
+        ]
         migration_plan = f"Manual review required for: {'; '.join(breaking_items)}"
 
     return CompatibilityReport(
@@ -214,7 +222,11 @@ def upgrade_ontology(
             case_uid=case_uid,
             action_type="ontology_upgrade",
             rationale="Denied: breaking upgrade without approval",
-            inputs={"from_version": from_version, "to_version": to_version, "approved": False},
+            inputs={
+                "from_version": from_version,
+                "to_version": to_version,
+                "approved": False,
+            },
             outputs={"denied": True, "report": report.model_dump()},
             trace_id=_trace_id,
             span_id=_span_id,
@@ -241,7 +253,11 @@ def upgrade_ontology(
         case_uid=case_uid,
         action_type="ontology_upgrade",
         rationale=f"Upgraded {from_version} -> {to_version} ({report.overall_level.value})",
-        inputs={"from_version": from_version, "to_version": to_version, "approved": approved},
+        inputs={
+            "from_version": from_version,
+            "to_version": to_version,
+            "approved": approved,
+        },
         outputs={"report": report.model_dump()},
         trace_id=_trace_id,
         span_id=_span_id,
