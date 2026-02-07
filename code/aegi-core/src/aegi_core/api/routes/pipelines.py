@@ -68,13 +68,30 @@ async def claim_extract_endpoint(
     llm: LLMBackend = Depends(get_llm_client),
 ) -> ClaimExtractResponse:
     """Extract claims from a chunk."""
+    # 从 DB 查 chunk 关联的真实元数据
+    from aegi_core.db.models.chunk import Chunk
+    from aegi_core.db.models.evidence import Evidence
+
+    chunk_row = (
+        await session.execute(sa.select(Chunk).where(Chunk.uid == body.chunk_uid))
+    ).scalar_one_or_none()
+    anchor_set = chunk_row.anchor_set if chunk_row else []
+    artifact_version_uid = chunk_row.artifact_version_uid if chunk_row else ""
+
+    ev_row = (
+        await session.execute(
+            sa.select(Evidence.uid).where(Evidence.chunk_uid == body.chunk_uid)
+        )
+    ).scalar_one_or_none()
+    evidence_uid = ev_row or ""
+
     budget = BudgetContext(max_tokens=4096, max_cost_usd=1.0)
     claims, svc_action, svc_trace, _ = await svc_extract(
         chunk_uid=body.chunk_uid,
         chunk_text=body.chunk_text,
-        anchor_set=[],
-        artifact_version_uid="",
-        evidence_uid="",
+        anchor_set=anchor_set,
+        artifact_version_uid=artifact_version_uid,
+        evidence_uid=evidence_uid,
         case_uid=case_uid,
         llm=llm,
         budget=budget,

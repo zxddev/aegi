@@ -8,6 +8,7 @@ from aegi_core.db.models.evidence import Evidence
 from aegi_core.db.models.hypothesis import Hypothesis
 from aegi_core.db.models.judgment import Judgment
 from aegi_core.db.models.narrative import Narrative
+from aegi_core.db.models.ontology import CasePinRow, OntologyVersionRow
 from aegi_core.db.models.source_claim import SourceClaim
 from aegi_core.db.models.tool_trace import ToolTrace
 
@@ -17,11 +18,13 @@ __all__ = [
     "ArtifactVersion",
     "Assertion",
     "Case",
+    "CasePinRow",
     "Chunk",
     "Evidence",
     "Hypothesis",
     "Judgment",
     "Narrative",
+    "OntologyVersionRow",
     "SourceClaim",
     "ToolTrace",
 ]

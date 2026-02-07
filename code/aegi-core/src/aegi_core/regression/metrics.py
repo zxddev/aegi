@@ -91,8 +91,8 @@ def compute_metrics_for_fixture(fixtures_root: Path, manifest_item: dict) -> dic
         if _is_grounded_text_quote(text, selectors):
             located += 1
         else:
-            # If anchor can't be located, treat as not located (not drift).
-            pass
+            # 有 anchor_set 但定位失败 → 漂移
+            drifted += 1
     anchor_locate_rate = (located / total_anchors) if total_anchors else 0.0
     drift_rate = (drifted / total_anchors) if total_anchors else 0.0
 

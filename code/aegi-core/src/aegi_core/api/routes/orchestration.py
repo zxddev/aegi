@@ -120,6 +120,58 @@ async def full_analysis_endpoint(
         stages=body.stages,
         start_from=body.start_from,
     )
+
+    # 持久化 Action + ToolTrace（best-effort，不影响 pipeline 结果）
+    import logging
+
+    from uuid import uuid4
+
+    from aegi_core.db.models.action import Action
+    from aegi_core.db.models.tool_trace import ToolTrace
+
+    try:
+        action_uid = f"act_{uuid4().hex}"
+        trace_id = uuid4().hex
+        db.add(
+            Action(
+                uid=action_uid,
+                case_uid=case_uid,
+                action_type="orchestration.full_analysis",
+                inputs={
+                    "source_claim_uids": body.source_claim_uids,
+                    "stages": body.stages,
+                    "start_from": body.start_from,
+                },
+                outputs={
+                    "stage_count": len(result.stages),
+                    "total_duration_ms": result.total_duration_ms,
+                },
+                trace_id=trace_id,
+            )
+        )
+        for sr in result.stages:
+            db.add(
+                ToolTrace(
+                    uid=f"tt_{uuid4().hex}",
+                    case_uid=case_uid,
+                    action_uid=action_uid,
+                    tool_name=f"pipeline.{sr.stage}",
+                    request={},
+                    response={"status": sr.status},
+                    status=sr.status,
+                    duration_ms=sr.duration_ms,
+                    error=sr.error,
+                    policy={},
+                    trace_id=trace_id,
+                )
+            )
+        await db.commit()
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "审计写入失败，pipeline 结果不受影响", exc_info=True
+        )
+        await db.rollback()
+
     return PipelineResultResponse(
         case_uid=result.case_uid,
         stages=[_stage_to_response(s) for s in result.stages],

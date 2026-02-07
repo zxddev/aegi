@@ -19,9 +19,9 @@ from aegi_core.db.models.judgment import Judgment
 from aegi_core.db.models.source_claim import SourceClaim
 
 
-def _det_uid(fixture_id: str, prefix: str, key: str = "") -> str:
-    """确定性 UID：同一 fixture + prefix + key 始终生成相同值。"""
-    return f"{prefix}_{uuid5(NAMESPACE_URL, f'{fixture_id}:{prefix}:{key}').hex}"
+def _det_uid(case_uid: str, fixture_id: str, prefix: str, key: str = "") -> str:
+    """确定性 UID：同一 case + fixture + prefix + key 始终生成相同值。"""
+    return f"{prefix}_{uuid5(NAMESPACE_URL, f'{case_uid}:{fixture_id}:{prefix}:{key}').hex}"
 
 
 async def import_fixture(
@@ -91,8 +91,8 @@ async def import_fixture(
     content_type_map = {"html": "text/html", "pdf": "application/pdf"}
     content_type = content_type_map.get(artifact_kind, "application/octet-stream")
 
-    artifact_identity_uid = _det_uid(fixture_id, "ai")
-    artifact_version_uid = _det_uid(fixture_id, "av")
+    artifact_identity_uid = _det_uid(case_uid, fixture_id, "ai")
+    artifact_version_uid = _det_uid(case_uid, fixture_id, "av")
 
     session.add(
         ArtifactIdentity(
@@ -114,6 +114,16 @@ async def import_fixture(
             },
         )
     )
+
+    # --- 提取原文用于 anchor_health 计算 ---
+    from aegi_core.regression.metrics import extract_visible_text_from_html
+
+    if artifact_kind == "html":
+        artifact_text = extract_visible_text_from_html(
+            artifact_bytes.decode("utf-8", errors="replace")
+        )
+    else:
+        artifact_text = ""
 
     # --- chunks ---
     chunks_doc = json.loads(
@@ -143,12 +153,13 @@ async def import_fixture(
                     quote_to_chunk_uid[exact] = ""
                     break
 
-        chunk_uid = _det_uid(fixture_id, "chunk", str(idx))
+        chunk_uid = _det_uid(case_uid, fixture_id, "chunk", str(idx))
         chunk_uids.append(chunk_uid)
 
         if text_quote is not None:
             quote_to_chunk_uid[text_quote] = chunk_uid
 
+        located = bool(text_quote and artifact_text and text_quote in artifact_text)
         session.add(
             Chunk(
                 uid=chunk_uid,
@@ -156,7 +167,7 @@ async def import_fixture(
                 ordinal=idx,
                 text=text_quote or "",
                 anchor_set=anchor_set,
-                anchor_health={},
+                anchor_health={"located": located, "drifted": not located},
             )
         )
 
@@ -202,8 +213,8 @@ async def import_fixture(
                         chunk_uid = mapped
                     break
 
-        evidence_uid = _det_uid(fixture_id, "ev", str(sc_idx))
-        source_claim_uid = _det_uid(fixture_id, "sc", str(sc_idx))
+        evidence_uid = _det_uid(case_uid, fixture_id, "ev", str(sc_idx))
+        source_claim_uid = _det_uid(case_uid, fixture_id, "sc", str(sc_idx))
         evidence_uids.append(evidence_uid)
         source_claim_uids.append(source_claim_uid)
 
@@ -264,7 +275,7 @@ async def import_fixture(
             if isinstance(uid, str) and uid in fixture_sc_uid_to_uid
         ]
 
-        assertion_uid = _det_uid(fixture_id, "as", str(a_idx))
+        assertion_uid = _det_uid(case_uid, fixture_id, "as", str(a_idx))
         assertion_uids.append(assertion_uid)
 
         session.add(
@@ -279,7 +290,7 @@ async def import_fixture(
         )
 
     # --- judgment ---
-    judgment_uid = _det_uid(fixture_id, "jd")
+    judgment_uid = _det_uid(case_uid, fixture_id, "jd")
     session.add(
         Judgment(
             uid=judgment_uid,
@@ -290,7 +301,7 @@ async def import_fixture(
     )
 
     # --- action ---
-    action_uid = _det_uid(fixture_id, "act")
+    action_uid = _det_uid(case_uid, fixture_id, "act")
     session.add(
         Action(
             uid=action_uid,

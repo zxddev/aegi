@@ -74,6 +74,85 @@ def get_case_pin(case_uid: str) -> str | None:
     return _case_pins.get(case_uid)
 
 
+# ── async DB 持久化（内存 + Postgres 双写）──────────────────────
+
+
+async def register_version_db(
+    version: OntologyVersion,
+    session: "AsyncSession",  # noqa: F821
+) -> None:
+    """注册版本到内存 + DB。"""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from aegi_core.db.models.ontology import OntologyVersionRow
+
+    register_version(version)
+    stmt = (
+        pg_insert(OntologyVersionRow)
+        .values(
+            version=version.version,
+            entity_types=version.entity_types,
+            event_types=version.event_types,
+            relation_types=version.relation_types,
+            created_at=version.created_at,
+        )
+        .on_conflict_do_update(
+            index_elements=["version"],
+            set_={
+                "entity_types": version.entity_types,
+                "event_types": version.event_types,
+                "relation_types": version.relation_types,
+            },
+        )
+    )
+    await session.execute(stmt)
+
+
+async def pin_case_db(
+    case_uid: str,
+    version: str,
+    session: "AsyncSession",  # noqa: F821
+) -> None:
+    """Pin case 到内存 + DB。"""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from aegi_core.db.models.ontology import CasePinRow
+
+    pin_case(case_uid, version)
+    stmt = (
+        pg_insert(CasePinRow)
+        .values(
+            case_uid=case_uid,
+            ontology_version=version,
+        )
+        .on_conflict_do_update(
+            index_elements=["case_uid"],
+            set_={"ontology_version": version},
+        )
+    )
+    await session.execute(stmt)
+
+
+async def load_from_db(session: "AsyncSession") -> None:  # noqa: F821
+    """启动时从 DB 加载到内存缓存。"""
+    import sqlalchemy as sa
+
+    from aegi_core.db.models.ontology import CasePinRow, OntologyVersionRow
+
+    rows = (await session.execute(sa.select(OntologyVersionRow))).scalars().all()
+    for r in rows:
+        _registry[r.version] = OntologyVersion(
+            version=r.version,
+            entity_types=r.entity_types,
+            event_types=r.event_types,
+            relation_types=r.relation_types,
+            created_at=r.created_at,
+        )
+    pins = (await session.execute(sa.select(CasePinRow))).scalars().all()
+    for p in pins:
+        _case_pins[p.case_uid] = p.ontology_version
+
+
 def _compare_type_lists(
     old: list[str],
     new: list[str],
