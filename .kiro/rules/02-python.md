@@ -21,6 +21,11 @@
 - **错误处理**：禁止裸 `except:`；捕获异常必须具体，保留上下文。
 - **异步**：FastAPI 路由优先 `async def`；避免在 async 路径做阻塞 I/O。
 - **可测试**：逻辑拆成纯函数/可注入依赖；避免业务逻辑塞进路由层。
+- **数据模型选择**：
+  - 领域模型/API schema/校验：`pydantic.BaseModel`（优先）
+  - LangGraph State：`TypedDict`（LangGraph 要求）
+  - 纯数据容器（无校验）：`dataclasses.dataclass`
+  - 禁止用裸 dict 传递结构化数据。
 
 ## 3. 测试与质量门禁
 

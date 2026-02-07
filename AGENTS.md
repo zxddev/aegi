@@ -15,6 +15,7 @@
 | `04-api-database.md` | REST/GraphQL API 设计 + PostgreSQL 表设计 |
 | `05-langgraph.md` | LangGraph 开发规范 |
 | `06-code-quality.md` | 代码质量与审查规范 |
+| `07-ontology.md` | aegi 本体与证据链设计规则（项目核心） |
 
 ## 技能索引
 

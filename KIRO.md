@@ -15,13 +15,14 @@
 
 | 文件 | 覆盖范围 |
 |------|----------|
-| `00-mandatory.md` | 强制规则：先技能后行动、先证据后结论、深度思考、工具纪律、三能力编排、主流程、作者标记 |
+| `00-mandatory.md` | 强制规则：先技能后行动、先证据后结论、深度思考、工具纪律、双能力编排、主流程、作者标记 |
 | `01-tools.md` | MCP/工具使用手册与操作细则 |
 | `02-python.md` | Python 开发规范（Google Style + 项目约束 + orchestkit skills 参考） |
 | `03-design.md` | 设计理念 + 代码质量准则（Linus 风格） |
 | `04-api-database.md` | REST/GraphQL API 设计 + PostgreSQL 表设计 |
 | `05-langgraph.md` | LangGraph 开发规范（orchestkit 10 个 langgraph skills 参考） |
 | `06-code-quality.md` | 代码质量与审查规范（orchestkit + beagle skills 参考） |
+| `07-ontology.md` | aegi 本体与证据链设计规则（架构红线、Object-first、因果推理、元认知） |
 
 ## 技能索引
 

@@ -2,7 +2,17 @@
 
 # 工具使用手册与操作细则
 
-## 1. MCP 工具速查
+## 0. Kiro 原生工具
+
+以下工具始终可用，无需额外配置：
+- `fs_read` / `fs_write`：文件读写
+- `execute_bash`：执行 shell 命令
+- `grep` / `glob`：文本搜索与文件查找
+- `code`：AST 级代码分析（search_symbols、pattern_search 等）
+
+## 1. MCP 扩展工具
+
+以下工具需要在 `dev.json` 的 `mcpServers` 中配置才可用。使用前先确认已配置。
 
 ### 1.1 serena（语义代码分析与精确编辑）
 

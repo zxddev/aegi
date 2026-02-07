@@ -42,6 +42,19 @@
 - LLM 生成的代码提交前，必须用 `beagle/beagle-core/llm-artifacts-detection` 检查。
 - 所有审查结论必须有 `verification-before-completion`（superpowers）验证支撑。
 
-## 4. Skills 路径前缀
+## 4. 审查输出格式
+
+```
+【品味评分】
+🟢 好品味 / 🟡 凑合 / 🔴 垃圾
+
+【致命问题】
+- ...
+
+【改进方向】
+- ...
+```
+
+## 5. Skills 路径前缀
 
 所有路径相对于 `.kiro/skills/`。
