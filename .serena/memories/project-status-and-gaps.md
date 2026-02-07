@@ -15,25 +15,21 @@
 - chat.py 语义检索降级加 warning 日志
 - narrative_builder DRY 重构
 
-## 待修复差距（按优先级）— 2026-02-07 更新
+## 待修复差距（按优先级）— 2026-02-07 21:07 更新
 
-### 高优先级
-1. ~~Gateway 三个 endpoint 全是 stub~~ ✅ — archive_url 用 httpx 实现, meta_search/doc_parse 降级模式
-2. ~~ToolClient 缺 meta_search/doc_parse~~ ✅ — 新增 + _post() 复用
-3. ~~EvidenceCitation 缺 artifact_version_uid~~ ✅ — 字段已加，chat.py 填充
-4. ~~HTTP 零 retry~~ ✅ — LLMClient + ToolClient 加 exponential backoff（3次）
+### 仍存在
+1. **Gateway 默认端口不匹配** — settings.py 默认 8601/8603，ports.md 写 8701/8703
+2. **Assertion.value 永远 {}** — fixture_import 写入 value={}
+3. **Ontology 版本读取仍依赖内存 dict** — _registry/_case_pins 多进程不一致
+4. **LLMClient.embed() 无 retry** — invoke 有 _post_with_retry，embed 直接裸调
 
-### 中优先级
-5. ~~Gateway tool_trace 纯内存~~ ✅ — JSONL 文件持久化（AEGI_GATEWAY_TRACE_DIR）
-6. ~~Ontology 版本内存态~~ ✅ — DB 双写 + load_from_db
-7. ~~Assertion.value 永远 {}~~ ✅ — 从 fixture JSON 读取 kind/value/confidence
-
-### 已修复（不再是问题）
-- ~~Alembic 迁移空壳~~ — 只有 init 是 pass，其余 6 个迁移都有真实 DDL
-- ~~fixture uuid4 不可复现~~ — 已改为 uuid5 确定性生成
-- ~~anchor_health 占位~~ — fixture_import 已计算 located/drifted
-- ~~drift_rate 永远 0~~ — metrics.py 已有真实漂移计算
-- ~~orchestration 结果未持久化~~ — orchestration.py 已写 Action + ToolTrace 到 DB
+### 已修复（2026-02-07 确认）
+- Gateway 三个 endpoint 已接入真实服务（SearxNG/httpx fetch/Unstructured）
+- ToolClient 已补齐 meta_search() + doc_parse() + 通用 _post retry
+- EvidenceCitation 已加 artifact_version_uid 字段
+- chat.py 构建 citation 时已填入 sc.artifact_version_uid
+- LLMClient.invoke 已有 _post_with_retry（3次 exponential backoff）
+- Gateway tool_trace 已加 JSONL 文件持久化（AEGI_GATEWAY_TRACE_DIR）
 
 ## 项目约定
 - `# Author: msq`、中文注释、ruff、pytest asyncio_mode=auto
