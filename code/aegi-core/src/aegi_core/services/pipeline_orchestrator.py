@@ -369,68 +369,23 @@ class PipelineOrchestrator:
         assertions: list[AssertionV1],
         case_uid: str,
     ) -> dict:
-        """Build KG from assertions and write to Neo4j."""
-        from aegi_core.services import kg_mapper
+        """Build KG from assertions via GraphRAG pipeline and write to Neo4j."""
+        from aegi_core.services.graphrag_pipeline import extract_and_index
 
-        result = kg_mapper.build_graph(
+        result = await extract_and_index(
             assertions,
             case_uid=case_uid,
             ontology_version="v1",
+            llm=self._llm,
+            neo4j=self._neo4j,
         )
         if not result.ok:
             return {"error": str(result.error)}
 
-        entities, events, relations = result.entities, result.events, result.relations
-
-        # Write to Neo4j
-        neo = self._neo4j
-        await neo.upsert_nodes(
-            "Entity",
-            [
-                {
-                    "uid": e.uid,
-                    "name": e.label,
-                    "type": e.entity_type,
-                    "case_uid": e.case_uid,
-                }
-                for e in entities
-            ],
-        )
-        await neo.upsert_nodes(
-            "Event",
-            [
-                {
-                    "uid": e.uid,
-                    "label": e.label,
-                    "type": e.event_type,
-                    "case_uid": e.case_uid,
-                    "timestamp_ref": e.timestamp_ref,
-                }
-                for e in events
-            ],
-        )
-        for r in relations:
-            await neo.upsert_edges(
-                "Entity"
-                if any(e.uid == r.source_entity_uid for e in entities)
-                else "Event",
-                "Entity"
-                if any(e.uid == r.target_entity_uid for e in entities)
-                else "Event",
-                r.relation_type.upper(),
-                [
-                    {
-                        "source_uid": r.source_entity_uid,
-                        "target_uid": r.target_entity_uid,
-                        "properties": r.properties,
-                    }
-                ],
-            )
-
         return {
-            "entities": len(entities),
-            "events": len(events),
-            "relations": len(relations),
+            "entities": len(result.entities),
+            "events": len(result.events),
+            "relations": len(result.relations),
         }
 
     # ── shared stage helpers ──────────────────────────────────────

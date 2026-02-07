@@ -22,7 +22,7 @@ from httpx import ASGITransport, AsyncClient
 
 from aegi_core.api.main import create_app
 from aegi_core.contracts.schemas import AssertionV1
-from aegi_core.services import kg_mapper, ontology_versioning
+from aegi_core.services import ontology_versioning
 from aegi_core.services.ontology_versioning import (
     ChangeLevel,
     OntologyVersion,
@@ -43,80 +43,8 @@ def _make_assertions(raw: list[dict]) -> list[AssertionV1]:
     return [AssertionV1(**a) for a in raw]
 
 
-class TestKGMapping:
-    def test_build_graph_produces_entities(self) -> None:
-        fixture = _load_fixture("defgeo-kg-001")
-        assertions = _make_assertions(fixture["assertions"])
-        result = kg_mapper.build_graph(
-            assertions,
-            case_uid="case_kg_001",
-            ontology_version="1.0.0",
-        )
-        assert result.ok
-        assert len(result.entities) == fixture["expected"]["entity_count"]
-        labels = {e.label for e in result.entities}
-        assert labels == set(fixture["expected"]["entity_labels"])
-
-    def test_build_graph_action_audit_trail(self) -> None:
-        fixture = _load_fixture("defgeo-kg-001")
-        assertions = _make_assertions(fixture["assertions"])
-        result = kg_mapper.build_graph(
-            assertions,
-            case_uid="case_kg_001",
-            ontology_version="1.0.0",
-        )
-        assert result.action.action_type == "kg_build"
-        assert "assertion_uids" in result.action.inputs
-        assert "entity_uids" in result.action.outputs
-        assert result.tool_trace.tool_name == "kg_mapper"
-        assert result.tool_trace.status == "ok"
-
-    def test_build_graph_traceable_to_assertions(self) -> None:
-        fixture = _load_fixture("defgeo-kg-001")
-        assertions = _make_assertions(fixture["assertions"])
-        input_uids = {a.uid for a in assertions}
-        result = kg_mapper.build_graph(
-            assertions,
-            case_uid="case_kg_001",
-            ontology_version="1.0.0",
-        )
-        for e in result.entities:
-            assert all(uid in input_uids for uid in e.source_assertion_uids)
-
-    def test_event_assertion_produces_event_node(self) -> None:
-        now = datetime.now(timezone.utc)
-        event_assertion = AssertionV1(
-            uid="as_event_001",
-            case_uid="case_ev",
-            kind="fused_claim",
-            value={
-                "attributed_to": "Exampleland",
-                "rationale": "deployment of naval assets on 2025-01-15",
-            },
-            source_claim_uids=["sc_ev_001"],
-            confidence=0.9,
-            created_at=now,
-        )
-        r = kg_mapper.build_graph(
-            [event_assertion],
-            case_uid="case_ev",
-            ontology_version="1.0.0",
-        )
-        assert len(r.events) == 1
-        assert r.events[0].event_type == "fused_claim"
-        assert r.events[0].timestamp_ref == "2025-01-15"
-        assert len(r.entities) == 1
-        assert r.entities[0].label == "Exampleland"
-        assert len(r.relations) == 1
-        assert r.relations[0].relation_type == "participated_in"
-
-    def test_empty_assertions_produces_empty_graph(self) -> None:
-        r = kg_mapper.build_graph(
-            [],
-            case_uid="case_empty",
-            ontology_version="1.0.0",
-        )
-        assert r.entities == [] and r.events == [] and r.relations == []
+# TestKGMapping 已移除：旧规则引擎 build_graph 已被 GraphRAG pipeline 替代。
+# GraphRAG pipeline 测试需要 LLM mock，见 graphrag_pipeline 独立测试。
 
 
 class TestOntologyVersioning:

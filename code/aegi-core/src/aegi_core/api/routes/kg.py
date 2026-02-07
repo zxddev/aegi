@@ -21,7 +21,8 @@ from aegi_core.contracts.schemas import AssertionV1
 from aegi_core.db.models.action import Action
 from aegi_core.infra.neo4j_store import Neo4jStore
 from aegi_core.infra.llm_client import LLMClient
-from aegi_core.services import kg_mapper, ontology_versioning
+from aegi_core.services import ontology_versioning
+from aegi_core.services import graphrag_pipeline
 from aegi_core.services.entity import EntityV1
 from aegi_core.services.entity_disambiguator import disambiguate_entities
 
@@ -45,85 +46,40 @@ async def build_from_assertions(
     body: BuildGraphRequest,
     session: AsyncSession = Depends(get_db_session),
     neo4j: Neo4jStore = Depends(get_neo4j_store),
+    llm: LLMClient = Depends(get_llm_client),
 ) -> dict:
-    result = kg_mapper.build_graph(
+    result = await graphrag_pipeline.extract_and_index(
         body.assertions,
         case_uid=case_uid,
         ontology_version=body.ontology_version,
+        llm=llm,
+        neo4j=neo4j,
     )
 
     if not result.ok:
-        action_uid = f"act_{uuid4().hex}"
-        session.add(
-            Action(
-                uid=action_uid,
-                case_uid=case_uid,
-                action_type="kg.build",
-                inputs=result.action.inputs,
-                outputs=result.action.outputs,
-                trace_id=result.action.trace_id,
-            )
-        )
-        await session.commit()
-        return {"error": result.error.model_dump(), "action_uid": action_uid}
+        return {"error": result.error.model_dump()}
 
     entities, events, relations = result.entities, result.events, result.relations
-    svc_action = result.action
+
+    # 审计写入 Postgres
     action_uid = f"act_{uuid4().hex}"
     session.add(
         Action(
             uid=action_uid,
             case_uid=case_uid,
             action_type="kg.build",
-            inputs=svc_action.inputs,
-            outputs=svc_action.outputs,
-            trace_id=svc_action.trace_id,
+            inputs={"assertion_uids": [a.uid for a in body.assertions]},
+            outputs={
+                "entity_count": len(entities),
+                "event_count": len(events),
+                "relation_count": len(relations),
+            },
+            trace_id=uuid4().hex,
         )
     )
     await session.commit()
 
-    # 持久化到 Neo4j（MERGE 语义，天然幂等，支持增量更新）
-    await neo4j.upsert_nodes(
-        "Entity",
-        [
-            {
-                "uid": e.uid,
-                "name": e.label,
-                "type": e.entity_type,
-                "case_uid": e.case_uid,
-            }
-            for e in entities
-        ],
-    )
-    await neo4j.upsert_nodes(
-        "Event",
-        [
-            {
-                "uid": e.uid,
-                "label": e.label,
-                "type": e.event_type,
-                "case_uid": e.case_uid,
-                "timestamp_ref": e.timestamp_ref,
-            }
-            for e in events
-        ],
-    )
-    for r in relations:
-        src_is_entity = any(e.uid == r.source_entity_uid for e in entities)
-        tgt_is_entity = any(e.uid == r.target_entity_uid for e in entities)
-        await neo4j.upsert_edges(
-            "Entity" if src_is_entity else "Event",
-            "Entity" if tgt_is_entity else "Event",
-            r.relation_type.upper(),
-            [
-                {
-                    "source_uid": r.source_entity_uid,
-                    "target_uid": r.target_entity_uid,
-                    "properties": r.properties,
-                }
-            ],
-        )
-
+    # Neo4j 已由 graphrag_pipeline 写入
     return {
         "entities": [e.model_dump() for e in entities],
         "events": [e.model_dump() for e in events],
