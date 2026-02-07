@@ -1,9 +1,9 @@
 # Author: msq
-"""init
+"""init – 无表创建，仅占位。
 
 Revision ID: bc5052692a40
 Revises:
-Create Date: 2026-02-05 19:26:11.322997
+Create Date: 2026-01-01 00:00:00.000000
 
 """
 
@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    pass
+    pass  # 初始占位，表在后续迁移中创建
 
 
 def downgrade() -> None:

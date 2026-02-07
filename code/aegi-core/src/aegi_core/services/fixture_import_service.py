@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,11 @@ from aegi_core.db.models.chunk import Chunk
 from aegi_core.db.models.evidence import Evidence
 from aegi_core.db.models.judgment import Judgment
 from aegi_core.db.models.source_claim import SourceClaim
+
+
+def _det_uid(fixture_id: str, prefix: str, key: str = "") -> str:
+    """确定性 UID：同一 fixture + prefix + key 始终生成相同值。"""
+    return f"{prefix}_{uuid5(NAMESPACE_URL, f'{fixture_id}:{prefix}:{key}').hex}"
 
 
 async def import_fixture(
@@ -86,8 +91,8 @@ async def import_fixture(
     content_type_map = {"html": "text/html", "pdf": "application/pdf"}
     content_type = content_type_map.get(artifact_kind, "application/octet-stream")
 
-    artifact_identity_uid = f"ai_{uuid4().hex}"
-    artifact_version_uid = f"av_{uuid4().hex}"
+    artifact_identity_uid = _det_uid(fixture_id, "ai")
+    artifact_version_uid = _det_uid(fixture_id, "av")
 
     session.add(
         ArtifactIdentity(
@@ -138,7 +143,7 @@ async def import_fixture(
                     quote_to_chunk_uid[exact] = ""
                     break
 
-        chunk_uid = f"chunk_{uuid4().hex}"
+        chunk_uid = _det_uid(fixture_id, "chunk", str(idx))
         chunk_uids.append(chunk_uid)
 
         if text_quote is not None:
@@ -177,7 +182,7 @@ async def import_fixture(
     fixture_sc_uid_to_uid: dict[str, str] = {}
     default_chunk_uid = chunk_uids[0]
 
-    for sc in sc_src:
+    for sc_idx, sc in enumerate(sc_src):
         if not isinstance(sc, dict):
             continue
         quote = sc.get("quote")
@@ -197,8 +202,8 @@ async def import_fixture(
                         chunk_uid = mapped
                     break
 
-        evidence_uid = f"ev_{uuid4().hex}"
-        source_claim_uid = f"sc_{uuid4().hex}"
+        evidence_uid = _det_uid(fixture_id, "ev", str(sc_idx))
+        source_claim_uid = _det_uid(fixture_id, "sc", str(sc_idx))
         evidence_uids.append(evidence_uid)
         source_claim_uids.append(source_claim_uid)
 
@@ -246,7 +251,7 @@ async def import_fixture(
         )
 
     assertion_uids: list[str] = []
-    for a in assertions_src:
+    for a_idx, a in enumerate(assertions_src):
         if not isinstance(a, dict):
             continue
         fixture_sc_uids = a.get("source_claim_uids")
@@ -259,7 +264,7 @@ async def import_fixture(
             if isinstance(uid, str) and uid in fixture_sc_uid_to_uid
         ]
 
-        assertion_uid = f"as_{uuid4().hex}"
+        assertion_uid = _det_uid(fixture_id, "as", str(a_idx))
         assertion_uids.append(assertion_uid)
 
         session.add(
@@ -274,7 +279,7 @@ async def import_fixture(
         )
 
     # --- judgment ---
-    judgment_uid = f"jd_{uuid4().hex}"
+    judgment_uid = _det_uid(fixture_id, "jd")
     session.add(
         Judgment(
             uid=judgment_uid,
@@ -285,7 +290,7 @@ async def import_fixture(
     )
 
     # --- action ---
-    action_uid = f"act_{uuid4().hex}"
+    action_uid = _det_uid(fixture_id, "act")
     session.add(
         Action(
             uid=action_uid,
