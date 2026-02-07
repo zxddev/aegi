@@ -15,35 +15,27 @@
 - chat.py 语义检索降级加 warning 日志
 - narrative_builder DRY 重构
 
-## 待修复差距（按优先级）
+## 待修复差距（按优先级）— 2026-02-07 更新
 
 ### 高优先级
-1. **Alembic 迁移空 pass** — 4 个迁移文件 upgrade/downgrade 都是 pass
-   - bc5052692a40_init.py
-   - 3f52046a1239_add_cases_and_actions.py
-   - 01195e08d027_add_p0_evidence_chain_tables.py
-   - a2e59547cc18_add_tool_traces.py
-   - 需要对照 db/models/ 填写 op.create_table
-
-2. **fixture 导入 uuid4 不可复现** — fixture_import_service.py 8 处 uuid4
-   - 改为 uuid5(NAMESPACE, fixture_key) 确定性生成
-
-3. **anchor_health/drift 占位** — fixture_import_service.py:154 anchor_health={}
-   - regression/metrics.py:86 drifted=0 永远返回 0
+1. **Gateway 三个 endpoint 全是 stub** — meta_search/archive_url/doc_parse 返回 not_implemented
+   - 需要接入 SearxNG(8701)/ArchiveBox(8702)/Unstructured(8703)
+2. **Core ToolClient 只有 archive_url()** — 缺 meta_search() 和 doc_parse()
+3. **Chat EvidenceCitation 缺 artifact_version_uid** — 需要二跳才能回源
+4. **外部 HTTP 调用零 retry/backoff** — LLMClient/ToolClient 无重试
 
 ### 中优先级
-4. **pipelines claim_extract 空占位** — anchor_set=[], artifact_version_uid="", evidence_uid=""
-   - 需要从 DB 查真实值
+5. **Gateway tool_trace 纯内存** — TOOL_TRACES 是进程内 list，重启丢失
+6. **Ontology 版本 write-through 但 read 仍内存** — _registry/_case_pins 是进程内 dict
+   - 已有 load_from_db + save_to_db，但多进程不一致
+7. **Assertion.value 永远 {}** — fixture_import 写入 value={}，claim_extractor 也未填充
 
-5. **orchestration 结果未持久化** — orchestration.py:123 只返回不写 DB
-   - 需要写 Action/ToolTrace 到 DB
-
-6. **ontology 版本内存态** — _registry/_case_pins 进程内 dict
-   - 需要迁移到 Postgres 表
-
-### 低优先级
-7. **gateway stub** — 三个 endpoint 返回 not_implemented
-8. **openspec 工件未同步** — 代码已实现但 checkbox 未勾选
+### 已修复（不再是问题）
+- ~~Alembic 迁移空壳~~ — 只有 init 是 pass，其余 6 个迁移都有真实 DDL
+- ~~fixture uuid4 不可复现~~ — 已改为 uuid5 确定性生成
+- ~~anchor_health 占位~~ — fixture_import 已计算 located/drifted
+- ~~drift_rate 永远 0~~ — metrics.py 已有真实漂移计算
+- ~~orchestration 结果未持久化~~ — orchestration.py 已写 Action + ToolTrace 到 DB
 
 ## 项目约定
 - `# Author: msq`、中文注释、ruff、pytest asyncio_mode=auto
