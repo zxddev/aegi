@@ -76,10 +76,12 @@ class MinioStore:
         assert self._client is not None
 
         def _stat() -> bool:
+            from minio.error import S3Error
+
             try:
                 self._client.stat_object(self.bucket, object_name)  # type: ignore[union-attr]
                 return True
-            except Exception:
+            except S3Error:
                 return False
 
         return await anyio.to_thread.run_sync(_stat)

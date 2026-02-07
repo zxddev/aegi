@@ -74,7 +74,9 @@ async def chat(
             )
             matched = list(rows.scalars().all())
     except Exception:  # noqa: BLE001 — Qdrant/embedding 不可用时降级
-        pass
+        import logging
+
+        logging.getLogger(__name__).warning("语义检索降级", exc_info=True)
 
     # 3) 降级：语义检索无结果时回退关键词匹配
     if not matched:

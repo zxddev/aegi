@@ -14,12 +14,31 @@ import re
 import uuid
 from datetime import datetime, timezone
 
+from dataclasses import dataclass, field
+
 from aegi_core.contracts.audit import ActionV1, ToolTraceV1
 from aegi_core.contracts.errors import ProblemDetail
 from aegi_core.contracts.schemas import AssertionV1
 from aegi_core.services.entity import EntityV1
 from aegi_core.services.event import EventV1
 from aegi_core.services.relation import RelationV1
+
+
+@dataclass
+class BuildGraphResult:
+    """build_graph 的类型安全返回值。"""
+
+    entities: list[EntityV1] = field(default_factory=list)
+    events: list[EventV1] = field(default_factory=list)
+    relations: list[RelationV1] = field(default_factory=list)
+    action: ActionV1 | None = None
+    tool_trace: ToolTraceV1 | None = None
+    error: ProblemDetail | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
 
 _EVENT_KEYWORDS = frozenset(
     {
@@ -85,22 +104,8 @@ def build_graph(
     case_uid: str,
     ontology_version: str,
     trace_id: str | None = None,
-) -> (
-    tuple[list[EntityV1], list[EventV1], list[RelationV1], ActionV1, ToolTraceV1]
-    | tuple[None, None, None, ActionV1, ToolTraceV1, ProblemDetail]
-):
-    """从 AssertionV1 列表构建知识图谱。
-
-    Args:
-        assertions: 已冻结的 assertion 列表。
-        case_uid: 所属 case。
-        ontology_version: 当前本体版本。
-        trace_id: 分布式追踪 ID。
-
-    Returns:
-        成功: (entities, events, relations, action, tool_trace)
-        失败: (None, None, None, action, tool_trace, problem)
-    """
+) -> BuildGraphResult:
+    """从 AssertionV1 列表构建知识图谱。"""
     _trace_id = trace_id or uuid.uuid4().hex
     _span_id = uuid.uuid4().hex[:16]
     now = datetime.now(timezone.utc)
@@ -131,7 +136,11 @@ def build_graph(
                 span_id=_span_id,
                 created_at=now,
             )
-            return None, None, None, action, tool_trace, err
+            return BuildGraphResult(
+                action=action,
+                tool_trace=tool_trace,
+                error=err,
+            )
 
     entities: list[EntityV1] = []
     events: list[EventV1] = []
@@ -257,4 +266,10 @@ def build_graph(
         span_id=_span_id,
         created_at=now,
     )
-    return entities, events, relations, action, tool_trace
+    return BuildGraphResult(
+        entities=entities,
+        events=events,
+        relations=relations,
+        action=action,
+        tool_trace=tool_trace,
+    )

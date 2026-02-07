@@ -52,23 +52,23 @@ async def build_from_assertions(
         ontology_version=body.ontology_version,
     )
 
-    if len(result) == 6:
-        _, _, _, svc_action, svc_trace, problem = result
+    if not result.ok:
         action_uid = f"act_{uuid4().hex}"
         session.add(
             Action(
                 uid=action_uid,
                 case_uid=case_uid,
                 action_type="kg.build",
-                inputs=svc_action.inputs,
-                outputs=svc_action.outputs,
-                trace_id=svc_action.trace_id,
+                inputs=result.action.inputs,
+                outputs=result.action.outputs,
+                trace_id=result.action.trace_id,
             )
         )
         await session.commit()
-        return {"error": problem.model_dump(), "action_uid": action_uid}
+        return {"error": result.error.model_dump(), "action_uid": action_uid}
 
-    entities, events, relations, svc_action, svc_trace = result
+    entities, events, relations = result.entities, result.events, result.relations
+    svc_action = result.action
     action_uid = f"act_{uuid4().hex}"
     session.add(
         Action(

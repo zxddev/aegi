@@ -28,51 +28,15 @@ def build_narratives(
     time_window_hours: float = 168.0,
     similarity_threshold: float = 0.35,
 ) -> list[NarrativeV1]:
-    """Cluster source claims into narratives by semantic similarity within a time window.
+    """Cluster source claims into narratives.
 
-    Args:
-        claims: Source claims to cluster.
-        time_window_hours: Max hours between first and last claim in a cluster.
-        similarity_threshold: Min similarity ratio to join a cluster.
-
-    Returns:
-        List of NarrativeV1 (one per cluster). Conflicting narratives are preserved.
+    委托给 build_narratives_with_uids，丢弃 uid_map。
     """
-    if not claims:
-        return []
-
-    sorted_claims = sorted(claims, key=lambda c: c.created_at)
-    clusters: list[list[SourceClaimV1]] = []
-
-    for claim in sorted_claims:
-        placed = False
-        for cluster in clusters:
-            representative = cluster[0]
-            time_diff = abs(
-                (claim.created_at - representative.created_at).total_seconds()
-            )
-            if time_diff > time_window_hours * 3600:
-                continue
-            if _similarity(claim.quote, representative.quote) >= similarity_threshold:
-                cluster.append(claim)
-                placed = True
-                break
-        if not placed:
-            clusters.append([claim])
-
-    now = datetime.now(timezone.utc)
-    narratives: list[NarrativeV1] = []
-    for cluster in clusters:
-        narratives.append(
-            NarrativeV1(
-                uid=f"nar-{uuid.uuid4().hex[:12]}",
-                case_uid=cluster[0].case_uid,
-                title=cluster[0].quote[:120],
-                assertion_uids=[],
-                hypothesis_uids=[],
-                created_at=now,
-            )
-        )
+    narratives, _ = build_narratives_with_uids(
+        claims,
+        time_window_hours=time_window_hours,
+        similarity_threshold=similarity_threshold,
+    )
     return narratives
 
 

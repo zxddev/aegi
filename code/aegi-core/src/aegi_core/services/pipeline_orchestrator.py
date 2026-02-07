@@ -377,11 +377,10 @@ class PipelineOrchestrator:
             case_uid=case_uid,
             ontology_version="v1",
         )
-        # build_graph returns 5-tuple on success, 6-tuple on error
-        if len(result) == 6:
-            return {"error": str(result[5])}
+        if not result.ok:
+            return {"error": str(result.error)}
 
-        entities, events, relations, action, trace = result
+        entities, events, relations = result.entities, result.events, result.relations
 
         # Write to Neo4j
         neo = self._neo4j

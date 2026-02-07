@@ -52,36 +52,35 @@ class TestKGMapping:
             case_uid="case_kg_001",
             ontology_version="1.0.0",
         )
-        assert len(result) == 5
-        entities, events, relations, action, tool_trace = result
-        assert len(entities) == fixture["expected"]["entity_count"]
-        labels = {e.label for e in entities}
+        assert result.ok
+        assert len(result.entities) == fixture["expected"]["entity_count"]
+        labels = {e.label for e in result.entities}
         assert labels == set(fixture["expected"]["entity_labels"])
 
     def test_build_graph_action_audit_trail(self) -> None:
         fixture = _load_fixture("defgeo-kg-001")
         assertions = _make_assertions(fixture["assertions"])
-        entities, events, relations, action, tool_trace = kg_mapper.build_graph(
+        result = kg_mapper.build_graph(
             assertions,
             case_uid="case_kg_001",
             ontology_version="1.0.0",
         )
-        assert action.action_type == "kg_build"
-        assert "assertion_uids" in action.inputs
-        assert "entity_uids" in action.outputs
-        assert tool_trace.tool_name == "kg_mapper"
-        assert tool_trace.status == "ok"
+        assert result.action.action_type == "kg_build"
+        assert "assertion_uids" in result.action.inputs
+        assert "entity_uids" in result.action.outputs
+        assert result.tool_trace.tool_name == "kg_mapper"
+        assert result.tool_trace.status == "ok"
 
     def test_build_graph_traceable_to_assertions(self) -> None:
         fixture = _load_fixture("defgeo-kg-001")
         assertions = _make_assertions(fixture["assertions"])
         input_uids = {a.uid for a in assertions}
-        entities, *_ = kg_mapper.build_graph(
+        result = kg_mapper.build_graph(
             assertions,
             case_uid="case_kg_001",
             ontology_version="1.0.0",
         )
-        for e in entities:
+        for e in result.entities:
             assert all(uid in input_uids for uid in e.source_assertion_uids)
 
     def test_event_assertion_produces_event_node(self) -> None:
@@ -98,26 +97,26 @@ class TestKGMapping:
             confidence=0.9,
             created_at=now,
         )
-        entities, events, relations, action, _ = kg_mapper.build_graph(
+        r = kg_mapper.build_graph(
             [event_assertion],
             case_uid="case_ev",
             ontology_version="1.0.0",
         )
-        assert len(events) == 1
-        assert events[0].event_type == "fused_claim"
-        assert events[0].timestamp_ref == "2025-01-15"
-        assert len(entities) == 1
-        assert entities[0].label == "Exampleland"
-        assert len(relations) == 1
-        assert relations[0].relation_type == "participated_in"
+        assert len(r.events) == 1
+        assert r.events[0].event_type == "fused_claim"
+        assert r.events[0].timestamp_ref == "2025-01-15"
+        assert len(r.entities) == 1
+        assert r.entities[0].label == "Exampleland"
+        assert len(r.relations) == 1
+        assert r.relations[0].relation_type == "participated_in"
 
     def test_empty_assertions_produces_empty_graph(self) -> None:
-        entities, events, relations, action, _ = kg_mapper.build_graph(
+        r = kg_mapper.build_graph(
             [],
             case_uid="case_empty",
             ontology_version="1.0.0",
         )
-        assert entities == [] and events == [] and relations == []
+        assert r.entities == [] and r.events == [] and r.relations == []
 
 
 class TestOntologyVersioning:

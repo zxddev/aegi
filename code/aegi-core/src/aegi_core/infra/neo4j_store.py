@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
+
+import anyio
 
 
 @dataclass
@@ -27,15 +30,19 @@ class Neo4jStore:
             )
         return self._driver
 
+    async def _run_sync(self, fn: Any, *args: Any, **kwargs: Any) -> Any:
+        """将同步 Neo4j 操作放到线程池执行，避免阻塞事件循环。"""
+        return await anyio.to_thread.run_sync(partial(fn, *args, **kwargs))
+
     async def connect(self) -> None:
-        self._get_driver()
+        await self._run_sync(self._get_driver)
 
     async def close(self) -> None:
         if self._driver is not None:
-            self._driver.close()
+            await self._run_sync(self._driver.close)
             self._driver = None
 
-    async def ensure_indexes(self) -> None:
+    def _sync_ensure_indexes(self) -> None:
         driver = self._get_driver()
         with driver.session(database=self.database) as s:
             for label, prop in [
@@ -52,7 +59,10 @@ class Neo4jStore:
                     f"FOR (n:{label}) ON (n.{prop})"
                 )
 
-    async def upsert_nodes(self, label: str, rows: list[dict[str, Any]]) -> None:
+    async def ensure_indexes(self) -> None:
+        await self._run_sync(self._sync_ensure_indexes)
+
+    def _sync_upsert_nodes(self, label: str, rows: list[dict[str, Any]]) -> None:
         if not rows:
             return
         driver = self._get_driver()
@@ -62,7 +72,12 @@ class Neo4jStore:
                 rows=rows,
             )
 
-    async def upsert_edges(
+    async def upsert_nodes(self, label: str, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        await self._run_sync(self._sync_upsert_nodes, label, rows)
+
+    def _sync_upsert_edges(
         self,
         source_label: str,
         target_label: str,
@@ -84,12 +99,24 @@ class Neo4jStore:
                     props=e.get("properties", {}),
                 )
 
-    async def get_neighbors(
+    async def upsert_edges(
         self,
-        node_uid: str,
-        *,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]:
+        source_label: str,
+        target_label: str,
+        rel_type: str,
+        edges: list[dict[str, Any]],
+    ) -> None:
+        if not edges:
+            return
+        await self._run_sync(
+            self._sync_upsert_edges,
+            source_label,
+            target_label,
+            rel_type,
+            edges,
+        )
+
+    def _sync_get_neighbors(self, node_uid: str, limit: int) -> list[dict[str, Any]]:
         driver = self._get_driver()
         with driver.session(database=self.database) as s:
             result = s.run(
@@ -108,6 +135,31 @@ class Neo4jStore:
                 for rec in result
             ]
 
+    async def get_neighbors(
+        self,
+        node_uid: str,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        return await self._run_sync(self._sync_get_neighbors, node_uid, limit)
+
+    def _sync_find_path(
+        self,
+        source_uid: str,
+        target_uid: str,
+        max_depth: int,
+    ) -> list[dict[str, Any]]:
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            result = s.run(
+                f"MATCH path = shortestPath((a {{uid: $src}})-[*1..{max_depth}]-(b {{uid: $tgt}})) "
+                "RETURN [n IN nodes(path) | properties(n)] AS nodes, "
+                "[r IN relationships(path) | {type: type(r), props: properties(r)}] AS rels",
+                src=source_uid,
+                tgt=target_uid,
+            )
+            return [{"nodes": rec["nodes"], "rels": rec["rels"]} for rec in result]
+
     async def find_path(
         self,
         source_uid: str,
@@ -115,24 +167,23 @@ class Neo4jStore:
         *,
         max_depth: int = 5,
     ) -> list[dict[str, Any]]:
-        driver = self._get_driver()
-        with driver.session(database=self.database) as s:
-            result = s.run(
-                f"MATCH path = shortestPath((a {{uid: $src}})-[*1..{max_depth}]-(b {{uid: $tgt}})) "
-                "RETURN [n IN nodes(path) | properties(n)] AS nodes, "
-                "[r IN relationships(path) | {{type: type(r), props: properties(r)}}] AS rels",
-                src=source_uid,
-                tgt=target_uid,
-            )
-            return [{"nodes": rec["nodes"], "rels": rec["rels"]} for rec in result]
+        return await self._run_sync(
+            self._sync_find_path,
+            source_uid,
+            target_uid,
+            max_depth,
+        )
 
-    async def run_cypher(self, query: str, **params: Any) -> list[dict[str, Any]]:
+    def _sync_run_cypher(self, query: str, params: dict) -> list[dict[str, Any]]:
         driver = self._get_driver()
         with driver.session(database=self.database) as s:
             result = s.run(query, **params)
             return [dict(rec) for rec in result]
 
-    async def count_nodes(self) -> dict[str, int]:
+    async def run_cypher(self, query: str, **params: Any) -> list[dict[str, Any]]:
+        return await self._run_sync(self._sync_run_cypher, query, params)
+
+    def _sync_count_nodes(self) -> dict[str, int]:
         driver = self._get_driver()
         with driver.session(database=self.database) as s:
             counts = {}
@@ -143,7 +194,13 @@ class Neo4jStore:
             counts["relationships"] = r["c"] if r else 0
             return counts
 
-    async def delete_all(self) -> None:
+    async def count_nodes(self) -> dict[str, int]:
+        return await self._run_sync(self._sync_count_nodes)
+
+    def _sync_delete_all(self) -> None:
         driver = self._get_driver()
         with driver.session(database=self.database) as s:
             s.run("MATCH (n) DETACH DELETE n")
+
+    async def delete_all(self) -> None:
+        await self._run_sync(self._sync_delete_all)
