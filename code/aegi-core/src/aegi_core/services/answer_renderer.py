@@ -20,6 +20,7 @@ class EvidenceCitation(BaseModel):
     source_claim_uid: str
     quote: str = ""
     evidence_uid: str = ""
+    artifact_version_uid: str = ""
 
 
 class AnswerV1(BaseModel):

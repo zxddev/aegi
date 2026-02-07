@@ -96,6 +96,7 @@ async def chat(
             source_claim_uid=sc.uid,
             quote=sc.quote or "",
             evidence_uid=sc.evidence_uid or "",
+            artifact_version_uid=sc.artifact_version_uid or "",
         )
         for sc in matched
     ]

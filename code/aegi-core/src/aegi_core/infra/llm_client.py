@@ -39,6 +39,29 @@ class LLMClient:
         """关闭底层 HTTP 连接池。"""
         await self._http.aclose()
 
+    async def _post_with_retry(
+        self, url: str, payload: dict, *, retries: int = 3, backoff: float = 0.5
+    ) -> httpx.Response:
+        """POST with exponential backoff retry on transient errors."""
+        import asyncio
+
+        last_exc: Exception | None = None
+        for attempt in range(retries):
+            try:
+                resp = await self._http.post(url, json=payload)
+                resp.raise_for_status()
+                return resp
+            except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+                last_exc = exc
+                if (
+                    isinstance(exc, httpx.HTTPStatusError)
+                    and exc.response.status_code < 500
+                ):
+                    raise
+                if attempt < retries - 1:
+                    await asyncio.sleep(backoff * (2**attempt))
+        raise last_exc  # type: ignore[misc]
+
     async def invoke(
         self,
         prompt: str,
@@ -67,11 +90,7 @@ class LLMClient:
         if max_tokens or budget.max_tokens:
             payload["max_output_tokens"] = max_tokens or budget.max_tokens
 
-        resp = await self._http.post(
-            f"{self._base_url}/v1/responses",
-            json=payload,
-        )
-        resp.raise_for_status()
+        resp = await self._post_with_retry(f"{self._base_url}/v1/responses", payload)
         data = resp.json()
 
         # Extract text from Responses API format

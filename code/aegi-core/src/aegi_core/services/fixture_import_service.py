@@ -282,10 +282,10 @@ async def import_fixture(
             Assertion(
                 uid=assertion_uid,
                 case_uid=case_uid,
-                kind="event",
-                value={},
+                kind=a.get("kind", "event"),
+                value=a.get("value") or {"source_claim_count": len(mapped_sc_uids)},
                 source_claim_uids=mapped_sc_uids,
-                confidence=None,
+                confidence=a.get("confidence"),
             )
         )
 

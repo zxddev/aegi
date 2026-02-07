@@ -18,8 +18,7 @@
 ## 待修复差距（按优先级）— 2026-02-07 更新
 
 ### 高优先级
-1. **Gateway 三个 endpoint 全是 stub** — meta_search/archive_url/doc_parse 返回 not_implemented
-   - 需要接入 SearxNG(8701)/ArchiveBox(8702)/Unstructured(8703)
+1. ~~Gateway 三个 endpoint 全是 stub~~ ✅ — archive_url 用 httpx 实现, meta_search/doc_parse 降级模式
 2. **Core ToolClient 只有 archive_url()** — 缺 meta_search() 和 doc_parse()
 3. **Chat EvidenceCitation 缺 artifact_version_uid** — 需要二跳才能回源
 4. **外部 HTTP 调用零 retry/backoff** — LLMClient/ToolClient 无重试
