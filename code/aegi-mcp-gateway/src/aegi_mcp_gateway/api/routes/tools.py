@@ -158,20 +158,51 @@ async def archive_url(req: ArchiveUrlRequest) -> dict:
         },
     }
 
-    # 真正抓取
+    # 通过 ArchiveBox CLI 归档
+    import asyncio
+    import json as _json
+
+    container = settings.archivebox_container
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, follow_redirects=True) as client:
-            resp = await client.get(req.url)
+        # 提交归档
+        add_proc = await asyncio.create_subprocess_exec(
+            "docker",
+            "exec",
+            "--user=archivebox",
+            container,
+            "archivebox",
+            "add",
+            "--index-only",
+            req.url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await add_proc.communicate()
+
+        # 查询归档结果
+        list_proc = await asyncio.create_subprocess_exec(
+            "docker",
+            "exec",
+            "--user=archivebox",
+            container,
+            "archivebox",
+            "list",
+            "--json",
+            "--filter-type",
+            "exact",
+            req.url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await list_proc.communicate()
+        snapshots = _json.loads(stdout.decode()) if stdout.strip() else []
+
         response = {
             "ok": True,
             "tool": "archive_url",
             "url": req.url,
-            "status_code": resp.status_code,
-            "content_type": resp.headers.get("content-type", ""),
-            "content_length": len(resp.content),
-            "text": resp.text[:50_000]
-            if resp.headers.get("content-type", "").startswith("text")
-            else None,
+            "archived": len(snapshots) > 0,
+            "snapshot": snapshots[0] if snapshots else None,
             "policy": policy,
         }
         status = "ok"

@@ -25,6 +25,7 @@ class Settings:
     cache_ttl_s: int
     searxng_base_url: str
     unstructured_base_url: str
+    archivebox_container: str
 
 
 def load_settings() -> Settings:
@@ -56,4 +57,5 @@ def load_settings() -> Settings:
         cache_ttl_s=cache_ttl_s,
         searxng_base_url=os.getenv("AEGI_SEARXNG_BASE_URL", "http://localhost:8701"),
         unstructured_base_url=os.getenv("AEGI_UNSTRUCTURED_BASE_URL", "http://localhost:8703"),
+        archivebox_container=os.getenv("AEGI_ARCHIVEBOX_CONTAINER", "archivebox"),
     )
