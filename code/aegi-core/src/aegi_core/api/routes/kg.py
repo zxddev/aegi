@@ -16,11 +16,14 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aegi_core.api.deps import get_db_session, get_neo4j_store
+from aegi_core.api.deps import get_db_session, get_llm_client, get_neo4j_store
 from aegi_core.contracts.schemas import AssertionV1
 from aegi_core.db.models.action import Action
 from aegi_core.infra.neo4j_store import Neo4jStore
+from aegi_core.infra.llm_client import LLMClient
 from aegi_core.services import kg_mapper, ontology_versioning
+from aegi_core.services.entity import EntityV1
+from aegi_core.services.entity_disambiguator import disambiguate_entities
 
 router = APIRouter(tags=["kg"])
 
@@ -167,3 +170,63 @@ async def compatibility_report(
 ) -> dict:
     report = ontology_versioning.compute_compatibility(from_version, version)
     return {"result": report.model_dump()}
+
+
+class DisambiguateRequest(BaseModel):
+    entities: list[EntityV1]
+
+
+@router.post("/cases/{case_uid}/kg/disambiguate")
+async def disambiguate(
+    case_uid: str,
+    body: DisambiguateRequest,
+    session: AsyncSession = Depends(get_db_session),
+    neo4j: Neo4jStore = Depends(get_neo4j_store),
+    llm: LLMClient = Depends(get_llm_client),
+) -> dict:
+    result = await disambiguate_entities(
+        body.entities,
+        case_uid=case_uid,
+        llm=llm,
+    )
+
+    # 审计写入 Postgres
+    action_uid = f"act_{uuid4().hex}"
+    session.add(
+        Action(
+            uid=action_uid,
+            case_uid=case_uid,
+            action_type="kg.disambiguate",
+            inputs=result.action.inputs,
+            outputs=result.action.outputs,
+            trace_id=result.action.trace_id,
+        )
+    )
+    await session.commit()
+
+    # 将非 uncertain 的 merge 组写入 Neo4j SAME_AS 关系
+    for group in result.merge_groups:
+        if group.uncertain:
+            continue
+        for alias_uid in group.alias_uids:
+            await neo4j.upsert_edges(
+                "Entity",
+                "Entity",
+                "SAME_AS",
+                [
+                    {
+                        "source_uid": group.canonical_uid,
+                        "target_uid": alias_uid,
+                        "properties": {
+                            "confidence": group.confidence,
+                            "explanation": group.explanation,
+                        },
+                    }
+                ],
+            )
+
+    return {
+        "merge_groups": [g.model_dump() for g in result.merge_groups],
+        "unmatched_uids": result.unmatched_uids,
+        "action_uid": action_uid,
+    }
