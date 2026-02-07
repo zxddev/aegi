@@ -19,15 +19,14 @@
 
 ### 高优先级
 1. ~~Gateway 三个 endpoint 全是 stub~~ ✅ — archive_url 用 httpx 实现, meta_search/doc_parse 降级模式
-2. **Core ToolClient 只有 archive_url()** — 缺 meta_search() 和 doc_parse()
-3. **Chat EvidenceCitation 缺 artifact_version_uid** — 需要二跳才能回源
-4. **外部 HTTP 调用零 retry/backoff** — LLMClient/ToolClient 无重试
+2. ~~ToolClient 缺 meta_search/doc_parse~~ ✅ — 新增 + _post() 复用
+3. ~~EvidenceCitation 缺 artifact_version_uid~~ ✅ — 字段已加，chat.py 填充
+4. ~~HTTP 零 retry~~ ✅ — LLMClient + ToolClient 加 exponential backoff（3次）
 
 ### 中优先级
-5. **Gateway tool_trace 纯内存** — TOOL_TRACES 是进程内 list，重启丢失
-6. **Ontology 版本 write-through 但 read 仍内存** — _registry/_case_pins 是进程内 dict
-   - 已有 load_from_db + save_to_db，但多进程不一致
-7. **Assertion.value 永远 {}** — fixture_import 写入 value={}，claim_extractor 也未填充
+5. ~~Gateway tool_trace 纯内存~~ ✅ — JSONL 文件持久化（AEGI_GATEWAY_TRACE_DIR）
+6. ~~Ontology 版本内存态~~ ✅ — DB 双写 + load_from_db
+7. ~~Assertion.value 永远 {}~~ ✅ — 从 fixture JSON 读取 kind/value/confidence
 
 ### 已修复（不再是问题）
 - ~~Alembic 迁移空壳~~ — 只有 init 是 pass，其余 6 个迁移都有真实 DDL

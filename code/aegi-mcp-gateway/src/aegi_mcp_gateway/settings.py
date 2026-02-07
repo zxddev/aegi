@@ -23,6 +23,8 @@ class Settings:
     min_interval_ms: int
     cache_enabled: bool
     cache_ttl_s: int
+    searxng_base_url: str
+    unstructured_base_url: str
 
 
 def load_settings() -> Settings:
@@ -52,4 +54,6 @@ def load_settings() -> Settings:
         min_interval_ms=min_interval_ms,
         cache_enabled=cache_enabled,
         cache_ttl_s=cache_ttl_s,
+        searxng_base_url=os.getenv("AEGI_SEARXNG_BASE_URL", "http://localhost:8701"),
+        unstructured_base_url=os.getenv("AEGI_UNSTRUCTURED_BASE_URL", "http://localhost:8703"),
     )

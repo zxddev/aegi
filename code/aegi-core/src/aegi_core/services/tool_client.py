@@ -65,8 +65,11 @@ class ToolClient:
         """元搜索。"""
         return await self._post("/tools/meta_search", {"q": q, **kwargs})
 
-    async def doc_parse(self, artifact_version_uid: str) -> dict:
+    async def doc_parse(
+        self, artifact_version_uid: str, *, file_url: str | None = None
+    ) -> dict:
         """文档解析。"""
-        return await self._post(
-            "/tools/doc_parse", {"artifact_version_uid": artifact_version_uid}
-        )
+        payload: dict[str, object] = {"artifact_version_uid": artifact_version_uid}
+        if file_url:
+            payload["file_url"] = file_url
+        return await self._post("/tools/doc_parse", payload)
