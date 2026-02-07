@@ -5,7 +5,7 @@ from __future__ import annotations
 from time import monotonic
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from aegi_mcp_gateway.api.errors import invalid_url, policy_denied, rate_limited
@@ -71,7 +71,7 @@ class MetaSearchRequest(BaseModel):
 
 @router.post("/meta_search")
 async def meta_search(req: MetaSearchRequest) -> dict:
-    """元搜索：调用 SearxNG，不可用时降级返回空结果。"""
+    """元搜索：调用 SearxNG。"""
     start = monotonic()
     settings = load_settings()
     policy = _policy_block(settings, tool_name="meta_search")
@@ -84,27 +84,19 @@ async def meta_search(req: MetaSearchRequest) -> dict:
     if req.safesearch is not None:
         params["safesearch"] = req.safesearch
 
-    try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            resp = await client.get(f"{settings.searxng_base_url}/search", params=params)
-        resp.raise_for_status()
-        data = resp.json()
-        results = data.get("results", [])
-        response = {"ok": True, "tool": "meta_search", "results": results, "q": req.q}
-        status = "ok"
-        error = None
-    except Exception as exc:
-        response = {"ok": True, "tool": "meta_search", "results": [], "q": req.q}
-        status = "degraded"
-        error = str(exc)
-
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        resp = await client.get(f"{settings.searxng_base_url}/search", params=params)
+    resp.raise_for_status()
+    data = resp.json()
+    results = data.get("results", [])
+    response = {"ok": True, "tool": "meta_search", "results": results, "q": req.q}
     _trace(
         tool_name="meta_search",
         request=req.model_dump(exclude_none=True),
-        response={"ok": response["ok"], "result_count": len(response["results"])},
-        status=status,
+        response={"ok": True, "result_count": len(results)},
+        status="ok",
         duration_ms=int((monotonic() - start) * 1000),
-        error=error,
+        error=None,
         policy=policy,
     )
     return response
@@ -217,62 +209,44 @@ class DocParseRequest(BaseModel):
 
 @router.post("/doc_parse")
 async def doc_parse(req: DocParseRequest) -> dict:
-    """文档解析：调用 Unstructured API，不可用时降级返回空结果。"""
+    """文档解析：调用 Unstructured API。需要 file_url。"""
     start = monotonic()
     settings = load_settings()
     policy = _policy_block(settings, tool_name="doc_parse")
 
-    try:
-        if not req.file_url:
-            raise ValueError("file_url not provided, degraded mode")
-        async with httpx.AsyncClient(timeout=60) as client:
-            # 下载文件
-            dl = await client.get(req.file_url)
-            dl.raise_for_status()
-            fname = req.file_url.rsplit("/", 1)[-1] or f"{req.artifact_version_uid}.bin"
-            ct = dl.headers.get("content-type", "application/octet-stream")
-            # 调用 Unstructured
-            resp = await client.post(
-                f"{settings.unstructured_base_url}/general/v0/general",
-                data={"strategy": "auto"},
-                files={"files": (fname, dl.content, ct)},
-            )
-        resp.raise_for_status()
-        elements = resp.json()
-        chunks = [
-            {
-                "text": el.get("text", ""),
-                "type": el.get("type", ""),
-                "metadata": el.get("metadata", {}),
-            }
-            for el in elements
-            if el.get("text")
-        ]
-        response = {
-            "ok": True,
-            "tool": "doc_parse",
-            "artifact_version_uid": req.artifact_version_uid,
-            "chunks": chunks,
-        }
-        status = "ok"
-        error = None
-    except Exception as exc:
-        response = {
-            "ok": True,
-            "tool": "doc_parse",
-            "artifact_version_uid": req.artifact_version_uid,
-            "chunks": [],
-        }
-        status = "degraded"
-        error = str(exc)
+    if not req.file_url:
+        raise HTTPException(status_code=422, detail="file_url is required")
 
+    async with httpx.AsyncClient(timeout=60) as client:
+        dl = await client.get(req.file_url)
+        dl.raise_for_status()
+        fname = req.file_url.rsplit("/", 1)[-1] or f"{req.artifact_version_uid}.bin"
+        ct = dl.headers.get("content-type", "application/octet-stream")
+        resp = await client.post(
+            f"{settings.unstructured_base_url}/general/v0/general",
+            data={"strategy": "auto"},
+            files={"files": (fname, dl.content, ct)},
+        )
+    resp.raise_for_status()
+    elements = resp.json()
+    chunks = [
+        {"text": el.get("text", ""), "type": el.get("type", ""), "metadata": el.get("metadata", {})}
+        for el in elements
+        if el.get("text")
+    ]
+    response = {
+        "ok": True,
+        "tool": "doc_parse",
+        "artifact_version_uid": req.artifact_version_uid,
+        "chunks": chunks,
+    }
     _trace(
         tool_name="doc_parse",
         request=req.model_dump(exclude_none=True),
-        response={"ok": response["ok"], "chunk_count": len(response["chunks"])},
-        status=status,
+        response={"ok": True, "chunk_count": len(chunks)},
+        status="ok",
         duration_ms=int((monotonic() - start) * 1000),
-        error=error,
+        error=None,
         policy=policy,
     )
     return response
