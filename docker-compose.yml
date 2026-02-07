@@ -56,8 +56,43 @@ services:
     volumes:
       - aegi-qdrant:/qdrant/storage
 
+  searxng:
+    image: searxng/searxng:latest
+    ports:
+      - "${SEARXNG_PORT:-8701}:8080"
+    volumes:
+      - ./config/searxng/settings.yml:/etc/searxng/settings.yml
+    restart: unless-stopped
+
+  archivebox:
+    image: archivebox/archivebox:latest
+    ports:
+      - "${ARCHIVEBOX_PORT:-8702}:8000"
+    environment:
+      ALLOWED_HOSTS: "*"
+      PUBLIC_INDEX: "True"
+      PUBLIC_SNAPSHOTS: "True"
+      MEDIA_MAX_SIZE: 750m
+      TIMEOUT: "120"
+      CHECK_SSL_VALIDITY: "False"
+    volumes:
+      - aegi-archivebox:/data
+    restart: unless-stopped
+
+  unstructured:
+    image: downloads.unstructured.io/unstructured-io/unstructured-api:latest
+    ports:
+      - "${UNSTRUCTURED_PORT:-8703}:8000"
+    volumes:
+      - aegi-unstructured:/app/data
+      - aegi-unstructured-cache:/root/.cache
+    restart: unless-stopped
+
 volumes:
   aegi-postgres:
   aegi-minio:
   aegi-neo4j:
   aegi-qdrant:
+  aegi-archivebox:
+  aegi-unstructured:
+  aegi-unstructured-cache:

@@ -30,16 +30,7 @@
 | 8716 | Qdrant HTTP | 向量检索 | ✅ Docker |
 | 8717 | Qdrant gRPC | 向量检索 | ✅ Docker |
 
-| 端口 | 服务 | 说明 | 状态 |
-|------|-----|------|------|
-| 8710 | PostgreSQL | 关系数据库（权威源） | ✅ Docker |
-| 8711 | MinIO API | 对象存储 | ✅ Docker |
-| 8712 | MinIO Console | 对象存储管理界面 | ✅ Docker |
-| 8715 | LiteLLM Proxy | LLM 统一网关（OpenAI 兼容） | ✅ Docker |
-| 8720 | Qdrant HTTP | 向量检索 | ✅ Docker |
-| 8721 | Qdrant gRPC | 向量检索 | ✅ Docker |
-| 8722 | Neo4j Web UI | 图数据库管理界面 | ✅ Docker |
-| 8723 | Neo4j Bolt | 图数据库连接 | ✅ Docker |
+
 
 
 ## 启动命令
@@ -92,6 +83,9 @@ NEO4J_HTTP_PORT=8714
 NEO4J_BOLT_PORT=8715
 QDRANT_HTTP_PORT=8716
 QDRANT_GRPC_PORT=8717
+SEARXNG_PORT=8701
+ARCHIVEBOX_PORT=8702
+UNSTRUCTURED_PORT=8703
 
 AEGI_POSTGRES_DSN_ASYNC=postgresql+asyncpg://aegi:aegi@localhost:8710/aegi
 AEGI_POSTGRES_DSN_SYNC=postgresql+psycopg://aegi:aegi@localhost:8710/aegi

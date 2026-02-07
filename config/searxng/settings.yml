@@ -1,0 +1,20 @@
+use_default_settings: true
+general:
+  instance_name: "SearxNG"
+server:
+  secret_key: "searxng_secret_2026"
+  bind_address: "0.0.0.0"
+  port: 8080
+  limiter: false
+search:
+  safe_search: 0
+  default_lang: "zh-CN"
+  formats:
+    - html
+    - json
+outgoing:
+  proxies:
+    all://:
+      - http://172.17.0.1:7890
+  request_timeout: 10.0
+  useragent_suffix: ""
