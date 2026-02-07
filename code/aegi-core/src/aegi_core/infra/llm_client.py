@@ -138,6 +138,7 @@ class LLMClient:
         resp = await self._http.post(
             f"{_settings.embedding_base_url}/v1/embeddings",
             json={"model": model or _settings.embedding_model, "input": text},
+            headers={"Authorization": f"Bearer {_settings.embedding_api_key}"},
         )
         resp.raise_for_status()
         data = resp.json()

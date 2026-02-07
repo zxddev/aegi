@@ -181,7 +181,7 @@ async def translate_claims(
     failures: list[ProblemDetail] = []
     degraded: DegradedOutput | None = None
 
-    model_id = "gpt-4o-mini"
+    model_id = "default"
     prompt_version = "translate-v1"
 
     invocation_req = LLMInvocationRequest(

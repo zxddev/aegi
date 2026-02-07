@@ -92,7 +92,7 @@ async def align_entities(
     failures: list[ProblemDetail] = []
     degraded: DegradedOutput | None = None
 
-    model_id = "gpt-4o-mini"
+    model_id = "default"
     prompt_version = "entity-align-v1"
 
     invocation_req = LLMInvocationRequest(
