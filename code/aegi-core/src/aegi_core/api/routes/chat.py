@@ -25,7 +25,12 @@ from aegi_core.db.models.case import Case
 from aegi_core.db.models.source_claim import SourceClaim
 from aegi_core.infra.llm_client import LLMClient
 from aegi_core.infra.qdrant_store import QdrantStore
-from aegi_core.services.answer_renderer import EvidenceCitation, render_answer
+from aegi_core.services.answer_renderer import (
+    EvidenceCitation,
+    format_evidence_context,
+    generate_grounded_answer,
+    render_answer,
+)
 from aegi_core.services.query_planner import RiskFlag, plan_query
 
 router = APIRouter(prefix="/cases", tags=["chat"])
@@ -107,15 +112,23 @@ async def chat(
     if len(matched) < 2:
         plan.risk_flags.append(RiskFlag.SOURCES_INSUFFICIENT)
 
-    # 6) 渲染回答
-    requested_type = GroundingLevel.FACT if citations else GroundingLevel.HYPOTHESIS
-    answer_text = f"基于 {len(citations)} 条证据的分析结果。" if citations else ""
-    answer = render_answer(
-        answer_text=answer_text,
-        requested_type=requested_type,
-        evidence_citations=citations,
-        trace_id=trace_id,
-    )
+    # 6) 渲染回答：有证据时调用 LLM grounded QA，无证据走 cannot_answer
+    if citations:
+        evidence_context, index_map = format_evidence_context(citations)
+        answer = await generate_grounded_answer(
+            question=body.question,
+            evidence_context=evidence_context,
+            index_map=index_map,
+            llm=llm,
+            trace_id=trace_id,
+        )
+    else:
+        answer = render_answer(
+            answer_text="",
+            requested_type=GroundingLevel.HYPOTHESIS,
+            evidence_citations=[],
+            trace_id=trace_id,
+        )
 
     # 7) 记录 action + trace 持久化（存入 Action.outputs）
     trace_data = {
