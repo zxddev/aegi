@@ -89,5 +89,5 @@
 
 ## 待办
 
-- [ ] archive_url 对接 ArchiveBox API（当前是裸 httpx.get）
+- [x] archive_url 对接 ArchiveBox CLI（6e26528）
 - [ ] baize-core 能力回移评估：哪些模块可以迁移到 aegi-core
