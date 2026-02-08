@@ -168,7 +168,7 @@ class PipelineOrchestrator:
             hypotheses = []
         # narrative_build (sync)
         narratives, result = self._stage_narrative(
-            active, source_claims, narratives, result
+            active, source_claims, assertions, narratives, result
         )
 
         # kg_build — skipped in sync mode (no Neo4j)
@@ -277,7 +277,7 @@ class PipelineOrchestrator:
 
         # narrative_build (sync)
         narratives, result = self._stage_narrative(
-            active, source_claims, narratives, result
+            active, source_claims, assertions, narratives, result
         )
 
         # kg_build — write to Neo4j if available
@@ -461,6 +461,7 @@ class PipelineOrchestrator:
         self,
         active: list[str],
         source_claims: list[SourceClaimV1],
+        assertions: list[AssertionV1],
         narratives: list[NarrativeV1] | None,
         result: PipelineResult,
     ) -> tuple[list[NarrativeV1], PipelineResult]:
@@ -469,7 +470,9 @@ class PipelineOrchestrator:
             "narrative_build",
             narratives,
             source_claims,
-            lambda: narrative_builder.build_narratives(source_claims),
+            lambda: narrative_builder.build_narratives(
+                source_claims, assertions=assertions
+            ),
             result,
         )
 

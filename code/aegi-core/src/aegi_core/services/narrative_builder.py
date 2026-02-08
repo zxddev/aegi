@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
-from aegi_core.contracts.schemas import NarrativeV1, SourceClaimV1
+from aegi_core.contracts.schemas import AssertionV1, NarrativeV1, SourceClaimV1
 
 
 def _similarity(a: str, b: str) -> float:
@@ -25,6 +25,7 @@ def _similarity(a: str, b: str) -> float:
 def build_narratives(
     claims: list[SourceClaimV1],
     *,
+    assertions: list[AssertionV1] | None = None,
     time_window_hours: float = 168.0,
     similarity_threshold: float = 0.35,
 ) -> list[NarrativeV1]:
@@ -34,6 +35,7 @@ def build_narratives(
     """
     narratives, _ = build_narratives_with_uids(
         claims,
+        assertions=assertions,
         time_window_hours=time_window_hours,
         similarity_threshold=similarity_threshold,
     )
@@ -78,6 +80,7 @@ def trace_narrative(
 def build_narratives_with_uids(
     claims: list[SourceClaimV1],
     *,
+    assertions: list[AssertionV1] | None = None,
     time_window_hours: float = 168.0,
     similarity_threshold: float = 0.35,
 ) -> tuple[list[NarrativeV1], dict[str, list[str]]]:
@@ -88,6 +91,12 @@ def build_narratives_with_uids(
     """
     if not claims:
         return [], {}
+
+    # source_claim_uid → assertion_uid 反向索引
+    sc_to_assertions: dict[str, list[str]] = {}
+    for a in assertions or []:
+        for sc_uid in a.source_claim_uids:
+            sc_to_assertions.setdefault(sc_uid, []).append(a.uid)
 
     sorted_claims = sorted(claims, key=lambda c: c.created_at)
     clusters: list[list[SourceClaimV1]] = []
@@ -114,12 +123,16 @@ def build_narratives_with_uids(
     for cluster in clusters:
         sc_uids = [c.uid for c in cluster]
         nar_uid = f"nar-{uuid.uuid4().hex[:12]}"
+        # 通过 source_claim → assertion 反向索引解析关联 assertion
+        linked: list[str] = []
+        for sc_uid in sc_uids:
+            linked.extend(sc_to_assertions.get(sc_uid, []))
         narratives.append(
             NarrativeV1(
                 uid=nar_uid,
                 case_uid=cluster[0].case_uid,
                 title=cluster[0].quote[:120],
-                assertion_uids=[],
+                assertion_uids=list(dict.fromkeys(linked)),
                 hypothesis_uids=[],
                 created_at=now,
             )
