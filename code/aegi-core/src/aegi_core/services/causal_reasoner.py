@@ -97,8 +97,11 @@ def analyze_causal_links(
         if temporal_ok:
             consistent_count += 1
 
-    total_pairs = max(len(links), 1)
-    consistency = consistent_count / total_pairs
+    # 无因果对时（单 assertion）视为一致（无矛盾证据）
+    if not links:
+        consistency = 1.0
+    else:
+        consistency = consistent_count / len(links)
 
     has_evidence = len(relevant) > 0 and any(a.source_claim_uids for a in relevant)
     grounding = grounding_gate(has_evidence)
