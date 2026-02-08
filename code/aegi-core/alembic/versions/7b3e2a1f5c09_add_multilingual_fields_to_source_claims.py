@@ -21,13 +21,39 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _add_col_if_missing(table: str, col: str, col_def: sa.Column) -> None:
+    """列已存在则跳过（兼容 01195e08d027 已含 language 的情况）。"""
+    conn = op.get_bind()
+    exists = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name=:t AND column_name=:c"
+        ),
+        {"t": table, "c": col},
+    ).scalar()
+    if not exists:
+        op.add_column(table, col_def)
+
+
 def upgrade() -> None:
-    op.add_column("source_claims", sa.Column("language", sa.String(16), nullable=True))
-    op.add_column(
-        "source_claims", sa.Column("original_quote", sa.Text(), nullable=True)
+    _add_col_if_missing(
+        "source_claims", "language", sa.Column("language", sa.String(16), nullable=True)
     )
-    op.add_column("source_claims", sa.Column("translation", sa.Text(), nullable=True))
-    op.add_column("source_claims", sa.Column("translation_meta", JSONB, nullable=True))
+    _add_col_if_missing(
+        "source_claims",
+        "original_quote",
+        sa.Column("original_quote", sa.Text(), nullable=True),
+    )
+    _add_col_if_missing(
+        "source_claims",
+        "translation",
+        sa.Column("translation", sa.Text(), nullable=True),
+    )
+    _add_col_if_missing(
+        "source_claims",
+        "translation_meta",
+        sa.Column("translation_meta", JSONB, nullable=True),
+    )
 
 
 def downgrade() -> None:
