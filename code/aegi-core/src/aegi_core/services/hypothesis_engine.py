@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json as _json
 import uuid
-import warnings
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal, Protocol
@@ -78,97 +78,6 @@ def _compute_confidence(supporting: int, contradicting: int) -> float:
     if total == 0:
         return 0.0
     return supporting / total
-
-
-def analyze_hypothesis(
-    hypothesis_text: str,
-    assertions: list[AssertionV1],
-    source_claims: list[SourceClaimV1],
-) -> ACHResult:
-    """对单个假设执行支持/反证/缺口分析（纯规则，无 LLM）。
-
-    .. deprecated:: 使用 analyze_hypothesis_llm 替代。
-
-    Args:
-        hypothesis_text: 假设文本。
-        assertions: 可用 assertion 列表。
-        source_claims: 可用 source claim 列表。
-
-    Returns:
-        ACHResult 包含支持/反证/缺口/覆盖率/置信度。
-    """
-    warnings.warn(
-        "analyze_hypothesis 规则引擎已弃用，请使用 analyze_hypothesis_llm",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    h_lower = hypothesis_text.lower()
-
-    supporting: list[str] = []
-    contradicting: list[str] = []
-
-    for a in assertions:
-        # 基于 assertion value 中的关键词匹配判断支持/反证
-        val_str = str(a.value).lower()
-        quote_texts = []
-        for sc_uid in a.source_claim_uids:
-            for sc in source_claims:
-                if sc.uid == sc_uid:
-                    quote_texts.append(sc.quote.lower())
-
-        combined = val_str + " " + " ".join(quote_texts)
-
-        deny_keywords = {
-            "denied",
-            "rejected",
-            "refuted",
-            "disputed",
-            "contradicts",
-            "against",
-        }
-        support_keywords = {
-            "confirmed",
-            "affirmed",
-            "verified",
-            "supports",
-            "consistent",
-        }
-
-        has_deny = any(k in combined for k in deny_keywords)
-        has_support = any(k in combined for k in support_keywords)
-
-        # 如果 assertion 的 source_claim 引用文本与假设有词汇重叠，视为相关
-        relevance = any(word in combined for word in h_lower.split() if len(word) > 3)
-
-        if not relevance:
-            continue
-
-        if has_deny and not has_support:
-            contradicting.append(a.uid)
-        else:
-            supporting.append(a.uid)
-
-    # 缺口：没有被任何 supporting/contradicting 覆盖的 assertion
-    covered = set(supporting) | set(contradicting)
-    gap_list = [
-        f"assertion {a.uid} not evaluated" for a in assertions if a.uid not in covered
-    ]
-
-    coverage = _compute_coverage(supporting, contradicting, len(assertions))
-    confidence = _compute_confidence(len(supporting), len(contradicting))
-
-    has_evidence = len(supporting) > 0
-    grounding = grounding_gate(has_evidence)
-
-    return ACHResult(
-        hypothesis_text=hypothesis_text,
-        supporting_assertion_uids=supporting,
-        contradicting_assertion_uids=contradicting,
-        coverage_score=coverage,
-        confidence=confidence,
-        gap_list=gap_list,
-        grounding_level=grounding,
-    )
 
 
 # ── LLM structured output ACH 分析 ──────────────────────────────

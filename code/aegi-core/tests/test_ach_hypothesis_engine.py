@@ -1,13 +1,8 @@
 # Author: msq
-"""ACH hypothesis engine tests.
+"""ACH hypothesis engine tests — adversarial + grounding_gate + audit.
 
-Source: openspec/changes/ach-hypothesis-analysis/tasks.md (4.1–4.3)
-Evidence:
-  - 验证支持/反证/缺口输出完整 (tasks.md 4.3)
-  - defgeo-ach-001: 支持证据占优 (design.md: Fixtures)
-  - defgeo-ach-002: 反证占优 (design.md: Fixtures)
-  - defgeo-ach-003: 证据不足，必须输出 gap (design.md: Fixtures)
-  - 无证据支持的结论必须调用 grounding_gate(False) 强制降级
+旧规则引擎 analyze_hypothesis 已删除，ACH 分析改用 LLM（analyze_hypothesis_llm）。
+本文件保留不依赖 LLM 的 adversarial 评估、grounding_gate 合同、审计追踪测试。
 """
 
 from __future__ import annotations
@@ -21,7 +16,7 @@ import pytest
 from aegi_core.contracts.llm_governance import GroundingLevel, grounding_gate
 from aegi_core.contracts.schemas import AssertionV1, SourceClaimV1
 from aegi_core.services.hypothesis_adversarial import evaluate_adversarial
-from aegi_core.services.hypothesis_engine import ACHResult, analyze_hypothesis
+from aegi_core.services.hypothesis_engine import ACHResult
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "defense-geopolitics"
 
@@ -64,55 +59,35 @@ def _build_assertions(raw: list[dict]) -> list[AssertionV1]:
 
 
 # ---------------------------------------------------------------------------
-# defgeo-ach-001: 支持证据占优
+# Adversarial 评估（支持占优场景）
 # ---------------------------------------------------------------------------
 
 
-class TestACH001SupportDominant:
+class TestAdversarialSupportDominant:
+    """defgeo-ach-001 fixture + 手工构造 ACHResult → adversarial 评估。"""
+
     @pytest.fixture()
     def scenario(self) -> dict:
         return _load_scenario("defgeo-ach-001")
 
     @pytest.fixture()
-    def result(self, scenario: dict) -> ACHResult:
-        claims = _build_claims(scenario["source_claims"])
-        assertions = _build_assertions(scenario["assertions"])
-        return analyze_hypothesis(scenario["hypothesis"], assertions, claims)
-
-    def test_supporting_count(self, result: ACHResult, scenario: dict) -> None:
-        expected = scenario["expected"]
-        assert len(result.supporting_assertion_uids) >= expected["supporting_count_gte"]
-
-    def test_no_contradicting(self, result: ACHResult, scenario: dict) -> None:
-        assert (
-            len(result.contradicting_assertion_uids)
-            == scenario["expected"]["contradicting_count"]
+    def ach(self, scenario: dict) -> ACHResult:
+        uids = [a["assertion_uid"] for a in scenario["assertions"]]
+        return ACHResult(
+            hypothesis_text=scenario["hypothesis"],
+            supporting_assertion_uids=uids,
+            contradicting_assertion_uids=[],
+            coverage_score=1.0,
+            confidence=1.0,
+            gap_list=[],
+            grounding_level=GroundingLevel.FACT,
         )
 
-    def test_no_gaps(self, result: ACHResult) -> None:
-        assert len(result.gap_list) == 0
-
-    def test_coverage(self, result: ACHResult, scenario: dict) -> None:
-        assert result.coverage_score >= scenario["expected"]["coverage_score_gte"]
-
-    def test_confidence(self, result: ACHResult, scenario: dict) -> None:
-        assert result.confidence >= scenario["expected"]["confidence_gte"]
-
-    def test_output_completeness(self, result: ACHResult) -> None:
-        """每个假设 MUST 包含支持/反证/缺口三类输出。"""
-        assert result.supporting_assertion_uids is not None
-        assert result.contradicting_assertion_uids is not None
-        assert result.gap_list is not None
-        assert result.coverage_score is not None
-        assert result.confidence is not None
-
-    def test_adversarial_preserves_disagreement(
-        self, result: ACHResult, scenario: dict
-    ) -> None:
+    def test_adversarial_roles(self, ach: ACHResult, scenario: dict) -> None:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
         adv, action, trace = evaluate_adversarial(
-            result, assertions, claims, case_uid="case_test"
+            ach, assertions, claims, case_uid="case_test"
         )
         assert adv.defense.role == "defense"
         assert adv.prosecution.role == "prosecution"
@@ -122,91 +97,66 @@ class TestACH001SupportDominant:
 
 
 # ---------------------------------------------------------------------------
-# defgeo-ach-002: 反证占优
+# Adversarial 评估（反证占优场景）
 # ---------------------------------------------------------------------------
 
 
-class TestACH002ContradictionDominant:
+class TestAdversarialContradictionDominant:
+    """defgeo-ach-002 fixture + 手工构造 ACHResult → adversarial 评估。"""
+
     @pytest.fixture()
     def scenario(self) -> dict:
         return _load_scenario("defgeo-ach-002")
 
     @pytest.fixture()
-    def result(self, scenario: dict) -> ACHResult:
-        claims = _build_claims(scenario["source_claims"])
-        assertions = _build_assertions(scenario["assertions"])
-        return analyze_hypothesis(scenario["hypothesis"], assertions, claims)
-
-    def test_has_contradicting(self, result: ACHResult, scenario: dict) -> None:
-        assert (
-            len(result.contradicting_assertion_uids)
-            >= scenario["expected"]["contradicting_count_gte"]
+    def ach(self, scenario: dict) -> ACHResult:
+        uids = [a["assertion_uid"] for a in scenario["assertions"]]
+        return ACHResult(
+            hypothesis_text=scenario["hypothesis"],
+            supporting_assertion_uids=[],
+            contradicting_assertion_uids=uids,
+            coverage_score=1.0,
+            confidence=0.0,
+            gap_list=[],
+            grounding_level=GroundingLevel.HYPOTHESIS,
         )
 
-    def test_coverage(self, result: ACHResult, scenario: dict) -> None:
-        assert result.coverage_score >= scenario["expected"]["coverage_score_gte"]
-
-    def test_low_confidence(self, result: ACHResult, scenario: dict) -> None:
-        assert result.confidence <= scenario["expected"]["confidence_lte"]
-
-    def test_output_completeness(self, result: ACHResult) -> None:
-        assert result.supporting_assertion_uids is not None
-        assert result.contradicting_assertion_uids is not None
-        assert result.gap_list is not None
-
-    def test_adversarial_conflict_preserved(
-        self, result: ACHResult, scenario: dict
-    ) -> None:
+    def test_prosecution_has_content(self, ach: ACHResult, scenario: dict) -> None:
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
-        adv, _, _ = evaluate_adversarial(
-            result, assertions, claims, case_uid="case_test"
-        )
-        # 反证占优时 prosecution 必须有内容
+        adv, _, _ = evaluate_adversarial(ach, assertions, claims, case_uid="case_test")
         assert len(adv.prosecution.assertion_uids) > 0
-        # judge 必须包含裁决依据
         assert adv.judge.rationale != ""
 
 
 # ---------------------------------------------------------------------------
-# defgeo-ach-003: 证据不足（必须输出 gap）
+# Adversarial 评估（证据不足场景）
 # ---------------------------------------------------------------------------
 
 
-class TestACH003InsufficientEvidence:
+class TestAdversarialInsufficientEvidence:
+    """defgeo-ach-003 fixture + 手工构造 ACHResult → adversarial 评估。"""
+
     @pytest.fixture()
     def scenario(self) -> dict:
         return _load_scenario("defgeo-ach-003")
 
     @pytest.fixture()
-    def result(self, scenario: dict) -> ACHResult:
-        claims = _build_claims(scenario["source_claims"])
-        assertions = _build_assertions(scenario["assertions"])
-        return analyze_hypothesis(scenario["hypothesis"], assertions, claims)
-
-    def test_has_gaps(self, result: ACHResult, scenario: dict) -> None:
-        assert len(result.gap_list) >= scenario["expected"]["gap_count_gte"]
-
-    def test_low_coverage(self, result: ACHResult, scenario: dict) -> None:
-        assert result.coverage_score <= scenario["expected"]["coverage_score_lte"]
-
-    def test_grounding_forced_degraded(self, result: ACHResult, scenario: dict) -> None:
-        """无证据支持的结论 MUST 调用 grounding_gate(False) 强制降级。"""
-        expected_level = GroundingLevel(scenario["expected"]["grounding_level"])
-        assert result.grounding_level == expected_level
-
-    def test_output_completeness(self, result: ACHResult) -> None:
-        assert result.supporting_assertion_uids is not None
-        assert result.contradicting_assertion_uids is not None
-        assert result.gap_list is not None
-
-    def test_adversarial_gaps_explicit(self, result: ACHResult, scenario: dict) -> None:
-        claims = _build_claims(scenario["source_claims"])
-        assertions = _build_assertions(scenario["assertions"])
-        adv, _, _ = evaluate_adversarial(
-            result, assertions, claims, case_uid="case_test"
+    def ach(self, scenario: dict) -> ACHResult:
+        return ACHResult(
+            hypothesis_text=scenario["hypothesis"],
+            supporting_assertion_uids=[],
+            contradicting_assertion_uids=[],
+            coverage_score=0.0,
+            confidence=0.0,
+            gap_list=["assertion as_ach_003_0001 not evaluated"],
+            grounding_level=GroundingLevel.HYPOTHESIS,
         )
-        # judge 必须显式列出证据缺口
+
+    def test_judge_lists_gaps(self, ach: ACHResult, scenario: dict) -> None:
+        claims = _build_claims(scenario["source_claims"])
+        assertions = _build_assertions(scenario["assertions"])
+        adv, _, _ = evaluate_adversarial(ach, assertions, claims, case_uid="case_test")
         assert len(adv.judge.gaps) > 0
 
 
@@ -238,7 +188,14 @@ class TestAuditTraceability:
         scenario = _load_scenario("defgeo-ach-001")
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
-        ach = analyze_hypothesis(scenario["hypothesis"], assertions, claims)
+        uids = [a["assertion_uid"] for a in scenario["assertions"]]
+        ach = ACHResult(
+            hypothesis_text=scenario["hypothesis"],
+            supporting_assertion_uids=uids,
+            coverage_score=1.0,
+            confidence=1.0,
+            grounding_level=GroundingLevel.FACT,
+        )
         _, action, trace = evaluate_adversarial(
             ach, assertions, claims, case_uid="case_test", trace_id="trace_abc"
         )
@@ -249,7 +206,14 @@ class TestAuditTraceability:
         scenario = _load_scenario("defgeo-ach-001")
         claims = _build_claims(scenario["source_claims"])
         assertions = _build_assertions(scenario["assertions"])
-        ach = analyze_hypothesis(scenario["hypothesis"], assertions, claims)
+        uids = [a["assertion_uid"] for a in scenario["assertions"]]
+        ach = ACHResult(
+            hypothesis_text=scenario["hypothesis"],
+            supporting_assertion_uids=uids,
+            coverage_score=1.0,
+            confidence=1.0,
+            grounding_level=GroundingLevel.FACT,
+        )
         _, _, trace = evaluate_adversarial(
             ach, assertions, claims, case_uid="case_test"
         )
