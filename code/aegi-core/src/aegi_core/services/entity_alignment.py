@@ -1,5 +1,5 @@
 # Author: msq
-"""Cross-lingual entity alignment: candidate generation + LLM rerank.
+"""跨语言实体对齐：候选生成 + LLM 重排序。
 
 Source: openspec/changes/multilingual-evidence-chain/design.md
 Evidence:
@@ -14,7 +14,7 @@ import uuid
 
 from pydantic import BaseModel, Field
 
-import json as _json
+
 from typing import TYPE_CHECKING
 
 import httpx
@@ -49,14 +49,14 @@ class EntityLinkV1(BaseModel):
 
 
 class AlignEntitiesRequest(BaseModel):
-    """Request body for entity alignment endpoint."""
+    """实体对齐接口的请求体。"""
 
     claims: list[SourceClaimV1]
     budget_context: BudgetContext
 
 
 class AlignEntitiesResponse(BaseModel):
-    """Response for entity alignment endpoint."""
+    """实体对齐接口的响应体。"""
 
     links: list[EntityLinkV1] = Field(default_factory=list)
     failures: list[ProblemDetail] = Field(default_factory=list)
@@ -141,17 +141,21 @@ async def align_entities(
                 f"- [{c.language or 'und'}] {c.quote[:200]}" for c in group
             )
             try:
+                from aegi_core.infra.llm_client import parse_llm_json
+
                 resp = await llm.invoke(
                     f"Are these text fragments referring to the same entity? "
                     f'Return JSON: {{"score": 0.0-1.0, "explanation": "..."}}\n\n'
                     f"{quotes_str}",
                     request=invocation_req,
                 )
-                parsed = _json.loads(resp["text"].strip())
+                parsed = parse_llm_json(resp["text"])
+                if not isinstance(parsed, dict):
+                    raise ValueError("LLM did not return JSON object")
                 group_score = float(parsed["score"])
                 group_explanation = parsed.get("explanation", "")
                 total_tokens += resp["usage"].get("total_tokens", 0)
-            except (httpx.HTTPError, KeyError, ValueError, _json.JSONDecodeError):
+            except (httpx.HTTPError, KeyError, ValueError):
                 pass  # 回退固定分数
 
         for claim in group:

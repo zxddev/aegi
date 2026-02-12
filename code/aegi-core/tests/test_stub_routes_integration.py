@@ -16,6 +16,9 @@ from httpx import ASGITransport, AsyncClient
 from aegi_core.api.main import create_app
 from aegi_core.db.base import Base
 from aegi_core.settings import settings
+from conftest import requires_llm, requires_postgres
+
+pytestmark = requires_postgres
 
 
 def _ensure_tables() -> None:
@@ -103,6 +106,7 @@ class TestNarrativesRoutes:
 # ---------------------------------------------------------------------------
 
 
+@requires_llm
 class TestKGRoutes:
     async def test_build_from_assertions_returns_action_uid(
         self, client: AsyncClient

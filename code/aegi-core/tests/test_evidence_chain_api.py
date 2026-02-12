@@ -16,6 +16,9 @@ from aegi_core.db.models.evidence import Evidence
 from aegi_core.db.models.judgment import Judgment
 from aegi_core.db.models.source_claim import SourceClaim
 from aegi_core.settings import settings
+from conftest import requires_postgres
+
+pytestmark = requires_postgres
 
 
 def _ensure_tables() -> None:

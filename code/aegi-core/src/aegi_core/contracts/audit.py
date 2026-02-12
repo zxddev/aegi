@@ -1,9 +1,9 @@
 # Author: msq
-"""Audit trail contracts – Action & ToolTrace fields + trace propagation (Gate-0).
+"""审计追踪契约 — Action & ToolTrace 字段 + trace 传播 (Gate-0)。
 
-Source: openspec/changes/foundation-common-contracts/specs/foundation-common/spec.md
-        openspec/changes/foundation-common-contracts/specs/llm-governance/spec.md
-Evidence: LLM calls MUST be governed by versioned policy; all invocations auditable.
+来源: openspec/changes/foundation-common-contracts/specs/foundation-common/spec.md
+      openspec/changes/foundation-common-contracts/specs/llm-governance/spec.md
+约束: LLM 调用必须受版本化策略管控；所有调用可审计。
 """
 
 from __future__ import annotations

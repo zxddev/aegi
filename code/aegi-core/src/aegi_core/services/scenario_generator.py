@@ -1,5 +1,5 @@
 # Author: msq
-"""Scenario generator – combine causal analysis + predictive signals into forecasts.
+"""情景生成器 — 结合因果分析 + 预测信号生成预测。
 
 Source: openspec/changes/predictive-causal-scenarios/tasks.md (2.3)
         openspec/changes/predictive-causal-scenarios/design.md
@@ -18,7 +18,14 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, Field as PydanticField
+
 from aegi_core.contracts.audit import ActionV1, ToolTraceV1
+
+if TYPE_CHECKING:
+    from aegi_core.infra.llm_client import LLMClient
 from aegi_core.contracts.llm_governance import GroundingLevel, grounding_gate
 from aegi_core.contracts.schemas import AssertionV1, HypothesisV1, NarrativeV1
 from aegi_core.services.causal_reasoner import CausalAnalysis, analyze_causal_links
@@ -28,8 +35,30 @@ from aegi_core.services.predictive_signals import (
     aggregate_signals,
 )
 
+
+# ---------------------------------------------------------------------------
+# LLM 结构化输出的 Pydantic 模型
+# ---------------------------------------------------------------------------
+
+
+class _LLMScenarioItem(BaseModel):
+    """LLM 输出的单个情景。"""
+
+    label: str = ""
+    type: str = ""
+    probability: float | None = None
+    triggers: list[str] = PydanticField(default_factory=list)
+    alternatives: list[str] = PydanticField(default_factory=list)
+
+
+class _LLMScenarioResponse(BaseModel):
+    """LLM 情景生成的结构化输出模型。"""
+
+    scenarios: list[_LLMScenarioItem] = PydanticField(default_factory=list)
+
+
 HIGH_RISK_THRESHOLD = 0.8
-CONFLICT_THRESHOLD = 2  # >= 2 hypotheses with overlapping assertions → conflict
+CONFLICT_THRESHOLD = 2  # >= 2 个假设引用重叠 assertion → 信号冲突
 
 
 @dataclass
@@ -221,3 +250,122 @@ def backtest_forecast(
         false_alarm=false_alarm,
         missed_alert=missed_alert,
     )
+
+
+# ---------------------------------------------------------------------------
+# LLM 驱动版本 — 情景推演（best / worst / most_likely）
+# ---------------------------------------------------------------------------
+
+_SCENARIO_PROMPT = """你是一位地缘政治情景分析师。基于以下假设和证据，生成三个分支情景。
+
+假设列表：
+{hypotheses_text}
+
+因果分析摘要：
+{causal_summary}
+
+信号趋势：
+{signal_summary}
+
+请生成 best（最佳）、worst（最差）、most_likely（最可能）三个情景。
+请严格以 JSON 格式输出（不要 markdown 代码块）：
+{{"scenarios": [{{"label": "情景描述", "type": "best|worst|most_likely", "probability": 0.0到1.0, "triggers": ["触发条件"], "alternatives": ["替代解释"]}}]}}
+"""
+
+
+async def agenerate_forecasts(
+    *,
+    hypotheses: list[HypothesisV1],
+    assertions: list[AssertionV1],
+    narratives: list[NarrativeV1] | None = None,
+    indicators: list[IndicatorSeriesV1] | None = None,
+    case_uid: str,
+    trace_id: str | None = None,
+    llm: "LLMClient | None" = None,
+) -> tuple[list[ForecastV1], ActionV1, ToolTraceV1]:
+    """LLM 驱动的情景推演。无 LLM 时 fallback 到规则版本。"""
+    # 规则版本作为 baseline / fallback
+    baseline_forecasts, action, tool_trace = generate_forecasts(
+        hypotheses=hypotheses,
+        assertions=assertions,
+        narratives=narratives,
+        indicators=indicators,
+        case_uid=case_uid,
+        trace_id=trace_id,
+    )
+
+    if llm is None or not hypotheses:
+        return baseline_forecasts, action, tool_trace
+
+    # 构建 prompt 上下文
+    hyp_lines = []
+    for h in hypotheses:
+        hyp_lines.append(f"- {h.label or h.uid} (conf={h.confidence})")
+
+    signals = aggregate_signals(indicators or [])
+    sig_lines = [
+        f"- {s.indicator_name}: {s.trend} mom={s.momentum:.2f}" for s in signals
+    ]
+
+    causal_lines = []
+    for f in baseline_forecasts:
+        if f.causal_analysis:
+            ca = f.causal_analysis
+            causal_lines.append(
+                f"- {ca.hypothesis_uid}: consistency={ca.consistency_score:.2f}, "
+                f"links={len(ca.causal_links)}"
+            )
+
+    prompt = _SCENARIO_PROMPT.format(
+        hypotheses_text="\n".join(hyp_lines) or "无",
+        causal_summary="\n".join(causal_lines) or "无",
+        signal_summary="\n".join(sig_lines) or "无",
+    )
+
+    try:
+        llm_response = await llm.invoke_structured(
+            prompt,
+            response_model=_LLMScenarioResponse,
+            max_tokens=1500,
+        )
+
+        llm_forecasts: list[ForecastV1] = []
+        for sc in llm_response.scenarios:
+            prob = sc.probability
+            # 无证据时禁止输出 probability
+            all_evidence = []
+            for a in assertions:
+                all_evidence.extend(a.source_claim_uids)
+            has_ev = len(all_evidence) > 0
+            grounding = grounding_gate(has_ev)
+            if grounding != GroundingLevel.FACT:
+                prob = None
+
+            llm_forecasts.append(
+                ForecastV1(
+                    scenario_id=f"forecast-{uuid.uuid4().hex[:8]}",
+                    probability=prob,
+                    trigger_conditions=sc.triggers,
+                    evidence_citations=all_evidence[:10],
+                    alternatives=sc.alternatives,
+                    grounding_level=grounding,
+                    status="draft",
+                )
+            )
+        if llm_forecasts:
+            action.action_type = "forecast_generate_llm"
+            action.rationale = (
+                f"LLM generated {len(llm_forecasts)} scenarios "
+                f"from {len(hypotheses)} hypotheses"
+            )
+            return llm_forecasts, action, tool_trace
+    except Exception:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "LLM 情景生成失败，fallback 到规则版本",
+            exc_info=True,
+            extra={"degraded": True, "component": "scenario_generator"},
+        )
+
+    return baseline_forecasts, action, tool_trace

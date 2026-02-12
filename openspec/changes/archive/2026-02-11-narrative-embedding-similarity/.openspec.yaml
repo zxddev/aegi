@@ -1,0 +1,6 @@
+id: narrative-embedding-similarity
+title: "narrative_builder 相似度从 SequenceMatcher 升级为 embedding cosine similarity"
+status: completed
+priority: P1
+created: "2026-02-08"
+author: msq

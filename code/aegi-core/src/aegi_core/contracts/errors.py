@@ -1,8 +1,8 @@
 # Author: msq
-"""Unified error model with Problem Details (RFC 9457) (Gate-0).
+"""统一错误模型，遵循 Problem Details (RFC 9457) (Gate-0)。
 
-Source: openspec/changes/foundation-common-contracts/specs/foundation-common/spec.md
-Evidence: Shared contract outputs MUST be file-addressable.
+来源: openspec/changes/foundation-common-contracts/specs/foundation-common/spec.md
+约束: 共享契约输出必须可按文件寻址。
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 
 class ProblemDetail(BaseModel):
-    """RFC 9457 Problem Details envelope."""
+    """RFC 9457 Problem Details 信封。"""
 
     type: str = "about:blank"
     title: str
@@ -23,7 +23,7 @@ class ProblemDetail(BaseModel):
     extensions: dict = Field(default_factory=dict)
 
 
-# -- Factory helpers -----------------------------------------------------------
+# -- 工厂方法 -----------------------------------------------------------
 
 
 def not_found(resource: str, uid: str) -> ProblemDetail:
@@ -67,4 +67,14 @@ def model_unavailable(model_id: str, reason: str) -> ProblemDetail:
         detail=reason,
         error_code="model_unavailable",
         extensions={"model_id": model_id},
+    )
+
+
+def gateway_error(detail: str) -> ProblemDetail:
+    return ProblemDetail(
+        type="urn:aegi:error:gateway_error",
+        title="Gateway error",
+        status=502,
+        detail=detail,
+        error_code="gateway_error",
     )

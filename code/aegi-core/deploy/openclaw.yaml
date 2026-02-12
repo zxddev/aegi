@@ -1,0 +1,77 @@
+# OpenClaw configuration for AEGI integration
+# Deploy this as openclaw.yaml in the OpenClaw working directory.
+
+# ---------------------------------------------------------------------------
+# Gateway
+# ---------------------------------------------------------------------------
+gateway:
+  port: 4800
+  host: "0.0.0.0"
+  auth:
+    mode: token
+    # Set via OPENCLAW_GATEWAY_TOKEN env var in production
+
+# ---------------------------------------------------------------------------
+# Plugins — load the AEGI tools plugin
+# ---------------------------------------------------------------------------
+plugins:
+  enabled: true
+  load:
+    paths:
+      - ./plugins/aegi-tools.mjs   # copy from deploy/openclaw-plugin/
+
+# ---------------------------------------------------------------------------
+# Tools — global defaults
+# ---------------------------------------------------------------------------
+tools:
+  web:
+    search:
+      enabled: true
+    fetch:
+      enabled: true
+
+# ---------------------------------------------------------------------------
+# Agents
+# ---------------------------------------------------------------------------
+agents:
+  defaults:
+    thinkingDefault: medium
+
+  list:
+    # -- team agent: user-facing, no browser --------------------------------
+    - id: team
+      default: true
+      workspace: /data/agents/team
+      systemPromptFile: /data/agents/team/SYSTEM.md
+      subagents:
+        allowAgents: ["crawler"]
+      tools:
+        # Allow AEGI plugin tools + built-in tools for this agent
+        alsoAllow:
+          - aegi_submit_evidence
+          - aegi_create_case
+          - aegi_query_kg
+          - aegi_run_pipeline
+          - aegi_get_report
+        deny:
+          - browser   # no browser for team agent
+
+    # -- crawler agent: browser tasks, serial, isolated ---------------------
+    - id: crawler
+      workspace: /data/agents/crawler
+      systemPromptFile: /data/agents/crawler/SYSTEM.md
+      tools:
+        deny:
+          - aegi_submit_evidence
+          - aegi_create_case
+          - aegi_query_kg
+          - aegi_run_pipeline
+          - aegi_get_report
+
+# ---------------------------------------------------------------------------
+# Browser (only used by crawler agent)
+# ---------------------------------------------------------------------------
+browser:
+  profiles:
+    headless:
+      cdpPort: 18800

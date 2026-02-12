@@ -34,6 +34,7 @@ from aegi_core.services.scenario_generator import (
     backtest_forecast,
     generate_forecasts,
 )
+from conftest import requires_postgres
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "defense-geopolitics"
 
@@ -431,6 +432,7 @@ class TestForecastGroundingGate:
 # ---------------------------------------------------------------------------
 
 
+@requires_postgres
 class TestForecastAPIStubs:
     @pytest.fixture()
     def client(self):

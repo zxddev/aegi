@@ -1,5 +1,5 @@
 # Author: msq
-"""Qdrant vector store for AEGI chunk embeddings + semantic search."""
+"""Qdrant 向量存储 — AEGI chunk embedding + 语义搜索。"""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class VectorSearchResult:
 
 
 class QdrantStore:
-    """Qdrant vector store."""
+    """Qdrant 向量存储。"""
 
     def __init__(
         self,
@@ -32,23 +32,28 @@ class QdrantStore:
         grpc_url: str = "",
         collection: str = DEFAULT_COLLECTION,
         vector_size: int = DEFAULT_VECTOR_SIZE,
+        api_key: str = "",
     ) -> None:
         from qdrant_client import AsyncQdrantClient
 
         self._url = url
+        self._api_key = api_key
         self._collection = collection
         self._vector_size = vector_size
-        self._client: AsyncQdrantClient = AsyncQdrantClient(
-            url=url,
-            check_compatibility=False,
-        )
+        kw: dict = {"url": url, "check_compatibility": False}
+        if api_key:
+            kw["api_key"] = api_key
+        self._client: AsyncQdrantClient = AsyncQdrantClient(**kw)
 
     async def connect(self) -> None:
-        """Ensure collection exists. Reconnect if previously closed."""
+        """确保 collection 存在。如果之前关闭过则重新连接。"""
         if self._client is None:
             from qdrant_client import AsyncQdrantClient
 
-            self._client = AsyncQdrantClient(url=self._url, check_compatibility=False)
+            kw: dict = {"url": self._url, "check_compatibility": False}
+            if self._api_key:
+                kw["api_key"] = self._api_key
+            self._client = AsyncQdrantClient(**kw)
         from qdrant_client.http.models import Distance, VectorParams
 
         exists = await self._client.collection_exists(self._collection)

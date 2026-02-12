@@ -80,7 +80,7 @@ def compute_metrics_for_fixture(fixtures_root: Path, manifest_item: dict) -> dic
         (fixtures_root / rel_assertions).read_text(encoding="utf-8")
     )["assertions"]
 
-    # Anchor locate rate: fraction of chunks whose TextQuoteSelector exact can be found.
+    # Anchor 定位率：TextQuoteSelector exact 能在原文中找到的 chunk 占比
     total_anchors = len(chunks)
     located = 0
     drifted = 0
@@ -96,7 +96,7 @@ def compute_metrics_for_fixture(fixtures_root: Path, manifest_item: dict) -> dic
     anchor_locate_rate = (located / total_anchors) if total_anchors else 0.0
     drift_rate = (drifted / total_anchors) if total_anchors else 0.0
 
-    # Claim grounding rate: fraction of assertions with at least one grounded source claim.
+    # Claim 落地率：至少有一个 grounded source claim 的 assertion 占比
     sc_by_uid = {
         sc["source_claim_uid"]: sc
         for sc in source_claims

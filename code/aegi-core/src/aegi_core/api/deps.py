@@ -1,5 +1,5 @@
 # Author: msq
-"""Dependency injection providers for FastAPI."""
+"""FastAPI 依赖注入提供者。"""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from aegi_core.infra.llm_client import LLMClient
 from aegi_core.infra.minio_store import MinioStore
 from aegi_core.infra.neo4j_store import Neo4jStore
 from aegi_core.infra.qdrant_store import QdrantStore
+from aegi_core.services.link_predictor import LinkPredictor
 from aegi_core.services.tool_client import ToolClient
 from aegi_core.settings import settings
 
@@ -30,10 +31,16 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 @lru_cache(maxsize=1)
 def get_llm_client() -> LLMClient:
+    import json
+
+    extra: dict[str, str] | None = None
+    if settings.litellm_extra_headers:
+        extra = json.loads(settings.litellm_extra_headers)
     return LLMClient(
         base_url=settings.litellm_base_url,
         api_key=settings.litellm_api_key,
         default_model=settings.litellm_default_model,
+        extra_headers=extra,
     )
 
 
@@ -56,12 +63,17 @@ def get_neo4j_store() -> Neo4jStore:
     )
 
 
+@lru_cache(maxsize=1)
+def get_link_predictor() -> LinkPredictor:
+    return LinkPredictor(neo4j=get_neo4j_store())
+
+
 # ── Qdrant ──────────────────────────────────────────────────────────
 
 
 @lru_cache(maxsize=1)
 def get_qdrant_store() -> QdrantStore:
-    return QdrantStore(url=settings.qdrant_url)
+    return QdrantStore(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
 
 
 # ── MinIO ───────────────────────────────────────────────────────────
@@ -69,7 +81,7 @@ def get_qdrant_store() -> QdrantStore:
 
 @lru_cache(maxsize=1)
 def get_minio_store() -> MinioStore:
-    # endpoint is host:port without scheme
+    # endpoint 是 host:port，不带 scheme
     endpoint = settings.s3_endpoint_url.replace("http://", "").replace("https://", "")
     return MinioStore(
         endpoint=endpoint,
@@ -78,3 +90,21 @@ def get_minio_store() -> MinioStore:
         bucket=settings.s3_bucket,
         secure=settings.s3_endpoint_url.startswith("https"),
     )
+
+
+@lru_cache(maxsize=1)
+def get_searxng_client() -> "SearXNGClient":
+    from aegi_core.infra.searxng_client import SearXNGClient
+
+    return SearXNGClient(base_url=settings.searxng_base_url)
+
+
+# ── GDELT ──────────────────────────────────────────────────────
+
+
+@lru_cache(maxsize=1)
+def get_gdelt_client() -> "GDELTClient":
+    from aegi_core.infra.gdelt_client import GDELTClient
+
+    proxy = settings.gdelt_proxy if settings.gdelt_proxy else None
+    return GDELTClient(proxy=proxy)

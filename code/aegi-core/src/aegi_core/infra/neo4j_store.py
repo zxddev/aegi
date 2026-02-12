@@ -204,3 +204,239 @@ class Neo4jStore:
 
     async def delete_all(self) -> None:
         await self._run_sync(self._sync_delete_all)
+
+    def _sync_search_entities(
+        self, keywords: list[str], case_uid: str, limit: int
+    ) -> list[dict[str, Any]]:
+        """按关键词模糊搜索实体，返回实体属性列表。"""
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            # 用 OR 拼接多个关键词的 CONTAINS 条件
+            where_clauses = " OR ".join(
+                f"toLower(n.name) CONTAINS $kw{i}" for i in range(len(keywords))
+            )
+            params: dict[str, Any] = {
+                f"kw{i}": kw.lower() for i, kw in enumerate(keywords)
+            }
+            params["case_uid"] = case_uid
+            params["limit"] = limit
+            result = s.run(
+                f"MATCH (n:Entity {{case_uid: $case_uid}}) "
+                f"WHERE {where_clauses} "
+                f"RETURN properties(n) AS props LIMIT $limit",
+                **params,
+            )
+            return [dict(rec["props"]) for rec in result]
+
+    async def search_entities(
+        self,
+        keywords: list[str],
+        case_uid: str,
+        *,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """按关键词模糊搜索 case 内实体。"""
+        if not keywords:
+            return []
+        return await self._run_sync(
+            self._sync_search_entities, keywords, case_uid, limit
+        )
+
+    # -- Phase 3: KG analysis methods -------------------------------------------
+
+    def _sync_get_subgraph(self, case_uid: str, limit: int) -> dict[str, Any]:
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            result = s.run(
+                "MATCH (n {case_uid: $case_uid}) "
+                "OPTIONAL MATCH (n)-[r]-(m {case_uid: $case_uid}) "
+                "WITH collect(DISTINCT n) + collect(DISTINCT m) AS all_nodes, "
+                "     collect(DISTINCT r) AS all_rels "
+                "UNWIND all_nodes AS node "
+                "WITH collect(DISTINCT {uid: node.uid, name: coalesce(node.name, node.label, ''), "
+                "     type: coalesce(node.type, ''), labels: labels(node), "
+                "     props: properties(node)})[..$limit] AS nodes, all_rels "
+                "UNWIND all_rels AS rel "
+                "WITH nodes, collect(DISTINCT CASE WHEN rel IS NOT NULL THEN "
+                "     {source: startNode(rel).uid, target: endNode(rel).uid, "
+                "      type: type(rel), props: properties(rel)} END) AS edges "
+                "RETURN nodes, [e IN edges WHERE e IS NOT NULL] AS edges",
+                case_uid=case_uid,
+                limit=limit,
+            )
+            rec = result.single()
+            if rec is None:
+                return {"nodes": [], "edges": []}
+            return {"nodes": rec["nodes"] or [], "edges": rec["edges"] or []}
+
+    async def get_subgraph(self, case_uid: str, *, limit: int = 5000) -> dict[str, Any]:
+        return await self._run_sync(self._sync_get_subgraph, case_uid, limit)
+
+    def _sync_get_temporal_events(
+        self, case_uid: str, start_date: str | None, end_date: str | None, limit: int
+    ) -> list[dict[str, Any]]:
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            query = "MATCH (e:Event {case_uid: $case_uid}) WHERE e.timestamp_ref IS NOT NULL"
+            params: dict[str, Any] = {"case_uid": case_uid, "limit": limit}
+            if start_date:
+                query += " AND e.timestamp_ref >= $start"
+                params["start"] = start_date
+            if end_date:
+                query += " AND e.timestamp_ref <= $end"
+                params["end"] = end_date
+            query += (
+                " RETURN properties(e) AS props ORDER BY e.timestamp_ref LIMIT $limit"
+            )
+            result = s.run(query, **params)
+            return [dict(rec["props"]) for rec in result]
+
+    async def get_temporal_events(
+        self,
+        case_uid: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        *,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        return await self._run_sync(
+            self._sync_get_temporal_events, case_uid, start_date, end_date, limit
+        )
+
+    def _sync_find_multi_hop_paths(
+        self,
+        source_uid: str,
+        target_uid: str,
+        max_depth: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            result = s.run(
+                f"MATCH path = (a {{uid: $src}})-[*1..{max_depth}]-(b {{uid: $tgt}}) "
+                "RETURN [n IN nodes(path) | {uid: n.uid, name: coalesce(n.name, n.label, ''), "
+                "        type: coalesce(n.type, ''), labels: labels(n)}] AS nodes, "
+                "       [r IN relationships(path) | {type: type(r), source: startNode(r).uid, "
+                "        target: endNode(r).uid, props: properties(r)}] AS rels "
+                "LIMIT $limit",
+                src=source_uid,
+                tgt=target_uid,
+                limit=limit,
+            )
+            return [{"nodes": rec["nodes"], "rels": rec["rels"]} for rec in result]
+
+    async def find_multi_hop_paths(
+        self,
+        source_uid: str,
+        target_uid: str,
+        *,
+        max_depth: int = 5,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        return await self._run_sync(
+            self._sync_find_multi_hop_paths, source_uid, target_uid, max_depth, limit
+        )
+
+    def _sync_get_isolated_nodes(
+        self, case_uid: str, limit: int
+    ) -> list[dict[str, Any]]:
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            result = s.run(
+                "MATCH (n {case_uid: $case_uid}) WHERE NOT (n)--() "
+                "RETURN properties(n) AS props, labels(n) AS labels LIMIT $limit",
+                case_uid=case_uid,
+                limit=limit,
+            )
+            return [
+                {"props": dict(rec["props"]), "labels": list(rec["labels"])}
+                for rec in result
+            ]
+
+    async def get_isolated_nodes(
+        self, case_uid: str, *, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        return await self._run_sync(self._sync_get_isolated_nodes, case_uid, limit)
+
+    def _sync_get_entity_timeline(
+        self, entity_uid: str, limit: int
+    ) -> list[dict[str, Any]]:
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            result = s.run(
+                "MATCH (e {uid: $uid})-[r]-(ev:Event) "
+                "WHERE ev.timestamp_ref IS NOT NULL "
+                "RETURN properties(ev) AS event, type(r) AS rel_type, properties(r) AS rel_props "
+                "ORDER BY ev.timestamp_ref LIMIT $limit",
+                uid=entity_uid,
+                limit=limit,
+            )
+            return [
+                {
+                    "event": dict(rec["event"]),
+                    "rel_type": rec["rel_type"],
+                    "rel_props": dict(rec["rel_props"]),
+                }
+                for rec in result
+            ]
+
+    async def get_entity_timeline(
+        self, entity_uid: str, *, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        return await self._run_sync(self._sync_get_entity_timeline, entity_uid, limit)
+
+    def _sync_get_relationship_stats(self, case_uid: str) -> list[dict[str, Any]]:
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            result = s.run(
+                "MATCH (n {case_uid: $case_uid})-[r]->(m {case_uid: $case_uid}) "
+                "RETURN type(r) AS rel_type, count(r) AS count ORDER BY count DESC",
+                case_uid=case_uid,
+            )
+            return [
+                {"rel_type": rec["rel_type"], "count": rec["count"]} for rec in result
+            ]
+
+    async def get_relationship_stats(self, case_uid: str) -> list[dict[str, Any]]:
+        return await self._run_sync(self._sync_get_relationship_stats, case_uid)
+
+    def _sync_get_all_triples(self, case_uid: str) -> list[tuple[str, str, str]]:
+        """提取 case 下所有三元组 (head_uid, relation_type, tail_uid)。"""
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            result = s.run(
+                "MATCH (h {case_uid: $case_uid})-[r]->(t {case_uid: $case_uid}) "
+                "RETURN h.uid AS head, type(r) AS relation, t.uid AS tail",
+                case_uid=case_uid,
+            )
+            triples: list[tuple[str, str, str]] = []
+            for rec in result:
+                head = rec["head"]
+                relation = rec["relation"]
+                tail = rec["tail"]
+                if head and relation and tail:
+                    triples.append((str(head), str(relation), str(tail)))
+            return triples
+
+    async def get_all_triples(self, case_uid: str) -> list[tuple[str, str, str]]:
+        return await self._run_sync(self._sync_get_all_triples, case_uid)
+
+    def _sync_get_entity_names(self, case_uid: str) -> dict[str, str]:
+        """获取 case 内实体名称映射。"""
+        driver = self._get_driver()
+        with driver.session(database=self.database) as s:
+            result = s.run(
+                "MATCH (n {case_uid: $case_uid}) "
+                "RETURN n.uid AS uid, coalesce(n.name, n.label, n.uid) AS name",
+                case_uid=case_uid,
+            )
+            mapping: dict[str, str] = {}
+            for rec in result:
+                uid = rec["uid"]
+                if not uid:
+                    continue
+                mapping[str(uid)] = str(rec["name"] or uid)
+            return mapping
+
+    async def get_entity_names(self, case_uid: str) -> dict[str, str]:
+        return await self._run_sync(self._sync_get_entity_names, case_uid)

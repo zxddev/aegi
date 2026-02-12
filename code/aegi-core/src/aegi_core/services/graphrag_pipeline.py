@@ -89,10 +89,13 @@ async def extract_and_index(
     if not combined_text.strip():
         return BuildGraphResult(error=_make_error("抽取文本为空，无法构建图谱"))
 
-    # 调用 LLM 抽取
+    # 调用 LLM 抽取（结构化输出，自动重试验证）
     prompt = _build_prompt(combined_text)
-    result = await llm.invoke(prompt, max_tokens=4096)
-    extraction = _parse_extraction(result["text"])
+    extraction = await llm.invoke_structured(
+        prompt,
+        ExtractionResult,
+        max_tokens=4096,
+    )
 
     # 转换为 aegi 领域对象
     entities: list[EntityV1] = []

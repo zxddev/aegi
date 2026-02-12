@@ -20,6 +20,9 @@ from aegi_core.db.models.chunk import Chunk
 from aegi_core.db.models.evidence import Evidence
 from aegi_core.db.models.source_claim import SourceClaim
 from aegi_core.settings import settings
+from conftest import requires_llm, requires_postgres
+
+pytestmark = requires_postgres
 
 
 def _ensure_tables() -> None:
@@ -96,6 +99,7 @@ def _seed_case_with_claims(client: TestClient) -> tuple[str, str]:
     return case_uid, sc_uid
 
 
+@requires_llm
 def test_chat_returns_trace_id_and_citations() -> None:
     """POST /analysis/chat 返回 trace_id 和 evidence_citations。"""
     _ensure_tables()
@@ -116,6 +120,7 @@ def test_chat_returns_trace_id_and_citations() -> None:
     assert body["answer_type"] == "FACT"
 
 
+@requires_llm
 def test_chat_trace_replay() -> None:
     """GET /analysis/chat/{trace_id} 返回 query_plan + citations。"""
     _ensure_tables()
@@ -156,3 +161,66 @@ def test_chat_trace_not_found() -> None:
     case_uid = created.json()["case_uid"]
     resp = client.get(f"/cases/{case_uid}/analysis/chat/chat_nonexistent")
     assert resp.status_code == 404
+
+
+@requires_llm
+def test_chat_with_graph_context() -> None:
+    """图谱增强：Neo4j 中有实体时，chat 应将图谱上下文注入 LLM prompt。"""
+    _ensure_tables()
+
+    from aegi_core.api.deps import get_neo4j_store
+
+    neo4j = get_neo4j_store()
+
+    client = TestClient(app)
+    case_uid, sc_uid = _seed_case_with_claims(client)
+
+    tag = uuid4().hex[:8]
+    ent1_uid = f"ent_exampleland_{tag}"
+    ent2_uid = f"ent_strait_{tag}"
+
+    # 往 Neo4j 写入与 case 关联的实体（直接调同步方法）
+    neo4j._sync_upsert_nodes(
+        "Entity",
+        [
+            {
+                "uid": ent1_uid,
+                "name": "Exampleland",
+                "type": "country",
+                "case_uid": case_uid,
+            },
+            {
+                "uid": ent2_uid,
+                "name": "Strait",
+                "type": "location",
+                "case_uid": case_uid,
+            },
+        ],
+    )
+    neo4j._sync_upsert_edges(
+        "Entity",
+        "Entity",
+        "CONDUCTED_EXERCISE_NEAR",
+        [
+            {
+                "source_uid": ent1_uid,
+                "target_uid": ent2_uid,
+                "properties": {"description": "maritime exercise"},
+            }
+        ],
+    )
+
+    # chat 提问，关键词命中 SourceClaim（keyword fallback）+ Neo4j 实体
+    resp = client.post(
+        f"/cases/{case_uid}/analysis/chat",
+        json={
+            "question": "What maritime exercise did Exampleland announce near the Strait?"
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "trace_id" in body
+
+    # 验证 trace 持久化且图谱路径未崩溃
+    trace_resp = client.get(f"/cases/{case_uid}/analysis/chat/{body['trace_id']}")
+    assert trace_resp.status_code == 200

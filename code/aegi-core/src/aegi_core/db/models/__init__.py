@@ -4,12 +4,20 @@ from aegi_core.db.models.artifact import ArtifactIdentity, ArtifactVersion
 from aegi_core.db.models.assertion import Assertion
 from aegi_core.db.models.case import Case
 from aegi_core.db.models.chunk import Chunk
+from aegi_core.db.models.collection_job import CollectionJob
+from aegi_core.db.models.event_log import EventLog
 from aegi_core.db.models.evidence import Evidence
+from aegi_core.db.models.evidence_assessment import EvidenceAssessment
+from aegi_core.db.models.gdelt_event import GdeltEvent
 from aegi_core.db.models.hypothesis import Hypothesis
+from aegi_core.db.models.probability_update import ProbabilityUpdate
 from aegi_core.db.models.judgment import Judgment
 from aegi_core.db.models.narrative import Narrative
 from aegi_core.db.models.ontology import CasePinRow, OntologyVersionRow
+from aegi_core.db.models.push_log import PushLog
+from aegi_core.db.models.report import Report
 from aegi_core.db.models.source_claim import SourceClaim
+from aegi_core.db.models.subscription import Subscription
 from aegi_core.db.models.tool_trace import ToolTrace
 
 __all__ = [
@@ -20,11 +28,19 @@ __all__ = [
     "Case",
     "CasePinRow",
     "Chunk",
+    "CollectionJob",
+    "EventLog",
     "Evidence",
+    "EvidenceAssessment",
+    "GdeltEvent",
     "Hypothesis",
+    "ProbabilityUpdate",
     "Judgment",
     "Narrative",
     "OntologyVersionRow",
+    "PushLog",
+    "Report",
     "SourceClaim",
+    "Subscription",
     "ToolTrace",
 ]

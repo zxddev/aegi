@@ -39,13 +39,16 @@ class AnswerV1(BaseModel):
 
 
 GROUNDED_QA_PROMPT = (
-    "你是一位防务与地缘政治情报分析师。基于以下编号证据回答用户问题。\n"
-    "规则：\n"
-    "- 必须用 [N] 格式内联引用证据编号\n"
-    "- 不得编造证据中没有的信息\n"
-    "- 若证据不足以回答，明确说明\n\n"
-    "证据：\n{evidence_context}\n\n"
-    "问题：{question}\n"
+    "You are a senior intelligence analyst. Your role is to synthesize evidence "
+    "into clear, well-sourced assessments.\n"
+    "Always cite evidence using [N] notation. Never make claims without evidence support.\n"
+    "If evidence is insufficient, explicitly state the limitations.\n\n"
+    "Rules:\n"
+    "- You MUST inline-cite evidence numbers using [N] format\n"
+    "- You MUST NOT fabricate information absent from the provided evidence\n"
+    "- If the evidence is insufficient to answer, state this clearly\n\n"
+    "Evidence:\n{evidence_context}\n\n"
+    "Question: {question}\n"
 )
 
 PROMPT_VERSION = "grounded_qa_v1"
@@ -91,6 +94,10 @@ async def generate_grounded_answer(
     # 提取实际引用的编号，映射回 EvidenceCitation
     cited_indices = _extract_cited_indices(answer_text)
     cited_citations = [index_map[i] for i in sorted(cited_indices) if i in index_map]
+
+    # 若 LLM 未使用 [N] 引用但有证据，回退：返回全部 citations
+    if not cited_citations and index_map:
+        cited_citations = list(index_map.values())
 
     has_citations = len(cited_citations) > 0
     requested_type = GroundingLevel.FACT if has_citations else GroundingLevel.HYPOTHESIS

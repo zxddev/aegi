@@ -1,26 +1,32 @@
 # Author: msq
-"""Assertion fusion service.
+"""断言融合服务。
 
 Source: openspec/changes/automated-claim-extraction-fusion/tasks.md (2.1–2.3)
 Evidence:
-  - Assertions MUST be derived from SourceClaims (spec.md).
-  - Conflict set MUST be explicit and replayable (spec.md).
-  - Fusion MUST output rationale and conflict reason (design.md).
-  - Conflicts: value conflict + modality conflict; preserve, never overwrite (design.md).
+  - Assertions 必须从 SourceClaims 派生 (spec.md)。
+  - 冲突集必须显式且可重放 (spec.md)。
+  - 融合必须输出 rationale 和冲突原因 (design.md)。
+  - 冲突类型：值冲突 + 模态冲突；保留不覆盖 (design.md)。
 """
 
 from __future__ import annotations
 
+import re
+
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from aegi_core.contracts.audit import ActionV1, ToolTraceV1
 from aegi_core.contracts.errors import validation_error
 from aegi_core.contracts.schemas import AssertionV1, SourceClaimV1
 
+if TYPE_CHECKING:
+    from aegi_core.infra.llm_client import LLMClient
+
 
 class ConflictRecord:
-    """Single conflict between two claims."""
+    """两条 claim 之间的单个冲突记录。"""
 
     def __init__(
         self,
@@ -44,7 +50,7 @@ class ConflictRecord:
 
 
 def _detect_value_conflict(a: SourceClaimV1, b: SourceClaimV1) -> ConflictRecord | None:
-    """Detect value conflict: same attributed_to but different quote content."""
+    """检测值冲突：同一 attributed_to 但引用内容不同。"""
     if (
         a.attributed_to
         and b.attributed_to
@@ -63,7 +69,7 @@ def _detect_value_conflict(a: SourceClaimV1, b: SourceClaimV1) -> ConflictRecord
 def _detect_modality_conflict(
     a: SourceClaimV1, b: SourceClaimV1
 ) -> ConflictRecord | None:
-    """Detect modality conflict: e.g. confirmed vs denied on same subject."""
+    """检测模态冲突：同一主体上 confirmed vs denied。"""
     if not (a.attributed_to and b.attributed_to and a.attributed_to == b.attributed_to):
         return None
     quote_a = a.quote.lower()
@@ -84,21 +90,99 @@ def _detect_modality_conflict(
     return None
 
 
+# 时间表达提取模式（年月日）
+_TIME_PATTERN = re.compile(
+    r"(?:(?:january|february|march|april|may|june|july|august|september|"
+    r"october|november|december)\s+\d{1,2},?\s*\d{4}|\d{4}[-/]\d{1,2}[-/]\d{1,2})",
+    re.IGNORECASE,
+)
+
+# 常见地名关键词（可扩展）
+_LOCATION_KEYWORDS = {
+    "beijing",
+    "moscow",
+    "washington",
+    "london",
+    "paris",
+    "tokyo",
+    "berlin",
+    "kyiv",
+    "taipei",
+    "seoul",
+    "tehran",
+    "jerusalem",
+    "cairo",
+    "delhi",
+    "shanghai",
+    "guangzhou",
+    "shenzhen",
+    "hong kong",
+    "singapore",
+    "new york",
+    "los angeles",
+    "chicago",
+}
+
+
+def _detect_temporal_conflict(
+    a: SourceClaimV1, b: SourceClaimV1
+) -> ConflictRecord | None:
+    """检测时间冲突：同一主体的 claims 中包含不同时间表达。"""
+    if not (a.attributed_to and b.attributed_to and a.attributed_to == b.attributed_to):
+        return None
+    times_a = set(_TIME_PATTERN.findall(a.quote.lower()))
+    times_b = set(_TIME_PATTERN.findall(b.quote.lower()))
+    if times_a and times_b and times_a.isdisjoint(times_b):
+        return ConflictRecord(
+            conflict_type="temporal_conflict",
+            claim_uid_a=a.uid,
+            claim_uid_b=b.uid,
+            rationale=(
+                f"Temporal conflict on '{a.attributed_to}': {times_a} vs {times_b}"
+            ),
+        )
+    return None
+
+
+def _detect_geographic_conflict(
+    a: SourceClaimV1, b: SourceClaimV1
+) -> ConflictRecord | None:
+    """检测地理冲突：同一主体同时出现在不同地点。"""
+    if not (a.attributed_to and b.attributed_to and a.attributed_to == b.attributed_to):
+        return None
+    locs_a = {k for k in _LOCATION_KEYWORDS if k in a.quote.lower()}
+    locs_b = {k for k in _LOCATION_KEYWORDS if k in b.quote.lower()}
+    if locs_a and locs_b and locs_a.isdisjoint(locs_b):
+        # 检查时间是否重叠（created_at 在 24h 内视为同时）
+        time_diff = abs((a.created_at - b.created_at).total_seconds())
+        if time_diff < 86400:
+            return ConflictRecord(
+                conflict_type="geographic_conflict",
+                claim_uid_a=a.uid,
+                claim_uid_b=b.uid,
+                rationale=(
+                    f"Geographic conflict on '{a.attributed_to}': "
+                    f"{locs_a} vs {locs_b} within 24h"
+                ),
+            )
+    return None
+
+
 def fuse_claims(
     claims: list[SourceClaimV1],
     *,
     case_uid: str,
     trace_id: str | None = None,
 ) -> tuple[list[AssertionV1], list[dict], ActionV1, ToolTraceV1]:
-    """Fuse source claims into assertions, detecting conflicts.
+    """将 source claims 融合为 assertions，同时检测冲突。
 
     Args:
-        claims: Source claims to fuse.
-        case_uid: Owning case.
-        trace_id: Distributed trace id.
+        claims: 待融合的 source claims。
+        case_uid: 所属 case。
+        trace_id: 分布式追踪 ID。
 
     Returns:
-        Tuple of (assertions, conflict_set, action, tool_trace).
+        (assertions, conflict_set, action, tool_trace) 元组。
     """
     _trace_id = trace_id or uuid.uuid4().hex
     _span_id = uuid.uuid4().hex[:16]
@@ -145,6 +229,14 @@ def fuse_claims(
             mc = _detect_modality_conflict(a, b)
             if mc:
                 conflict_set.append(mc.to_dict())
+                conflicting_uids.update({a.uid, b.uid})
+            tc = _detect_temporal_conflict(a, b)
+            if tc:
+                conflict_set.append(tc.to_dict())
+                conflicting_uids.update({a.uid, b.uid})
+            gc = _detect_geographic_conflict(a, b)
+            if gc:
+                conflict_set.append(gc.to_dict())
                 conflicting_uids.update({a.uid, b.uid})
 
     # 按 attributed_to 分组生成 assertions
@@ -209,3 +301,81 @@ def fuse_claims(
     )
 
     return assertions, conflict_set, action, tool_trace
+
+
+# ---------------------------------------------------------------------------
+# LLM 驱动版本 — 语义立场冲突检测（跨来源）
+# ---------------------------------------------------------------------------
+
+_SEMANTIC_CONFLICT_PROMPT = """你是 OSINT 情报分析师。判断以下两条来自不同来源的情报是否存在立场矛盾。
+
+情报 A（来源: {source_a}）：
+{quote_a}
+
+情报 B（来源: {source_b}）：
+{quote_b}
+
+判断标准：
+- 两条情报对同一事件/事实的描述是否存在实质性矛盾（如一方确认、另一方否认或淡化）
+- 仅主题相关但不矛盾的不算冲突
+- 补充性信息不算冲突
+
+请严格以 JSON 格式输出（不要 markdown 代码块）：
+{{"conflict": true或false, "rationale": "简要说明矛盾点或为何不矛盾"}}
+"""
+
+
+def _parse_conflict_json(text: str) -> dict | None:
+    """从 LLM 输出中提取冲突判断 JSON。"""
+    from aegi_core.infra.llm_client import parse_llm_json
+
+    result = parse_llm_json(text)
+    return result if isinstance(result, dict) else None
+
+
+async def adetect_semantic_conflicts(
+    claims: list[SourceClaimV1],
+    *,
+    llm: "LLMClient | None" = None,
+) -> list[dict]:
+    """LLM 语义冲突检测：识别不同来源间的立场矛盾。
+
+    无 LLM 时返回空列表（规则引擎已在 fuse_claims 中处理）。
+    """
+    if llm is None or len(claims) < 2:
+        return []
+
+    conflicts: list[dict] = []
+    # 只检测不同来源间的 claim 对（同来源已由规则引擎处理）
+    for i, a in enumerate(claims):
+        for b in claims[i + 1 :]:
+            if (
+                a.attributed_to
+                and b.attributed_to
+                and a.attributed_to == b.attributed_to
+            ):
+                continue  # 同来源，跳过
+            try:
+                prompt = _SEMANTIC_CONFLICT_PROMPT.format(
+                    source_a=a.attributed_to or "unknown",
+                    quote_a=a.quote[:300],
+                    source_b=b.attributed_to or "unknown",
+                    quote_b=b.quote[:300],
+                )
+                result = await llm.invoke(prompt, max_tokens=256)
+                parsed = _parse_conflict_json(result["text"])
+                if parsed and parsed.get("conflict") is True:
+                    conflicts.append(
+                        ConflictRecord(
+                            conflict_type="semantic_stance_conflict",
+                            claim_uid_a=a.uid,
+                            claim_uid_b=b.uid,
+                            rationale=parsed.get(
+                                "rationale", "LLM detected stance conflict"
+                            ),
+                        ).to_dict()
+                    )
+            except Exception:  # noqa: BLE001 — LLM 失败时静默跳过
+                pass
+
+    return conflicts

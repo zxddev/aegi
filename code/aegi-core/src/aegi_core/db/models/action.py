@@ -16,11 +16,11 @@ class Action(Base):
     __tablename__ = "actions"
 
     uid: Mapped[str] = mapped_column(sa.String(64), primary_key=True)
-    case_uid: Mapped[str] = mapped_column(
+    case_uid: Mapped[str | None] = mapped_column(
         sa.String(64),
         sa.ForeignKey("cases.uid", ondelete="CASCADE"),
         index=True,
-        nullable=False,
+        nullable=True,
     )
 
     action_type: Mapped[str] = mapped_column(sa.String(64), nullable=False)

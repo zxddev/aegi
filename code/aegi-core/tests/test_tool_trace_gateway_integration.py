@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -14,6 +15,9 @@ from aegi_core.api.deps import get_tool_client
 from aegi_core.api.main import app
 from aegi_core.db.base import Base
 from aegi_core.settings import settings
+from conftest import requires_gateway, requires_postgres
+
+pytestmark = [requires_postgres, requires_gateway]
 
 
 def _ensure_tables() -> None:
@@ -23,14 +27,39 @@ def _ensure_tables() -> None:
     Base.metadata.create_all(engine)
 
 
-def _import_gateway_app() -> object:
+def _import_gateway_app(timeout: int = 5) -> object:
     tests_dir = Path(__file__).resolve().parent
     code_dir = tests_dir.parents[1]
     gateway_src = code_dir / "aegi-mcp-gateway" / "src"
-    sys.path.insert(0, str(gateway_src))
-    from aegi_mcp_gateway.api.main import app as gateway_app  # type: ignore
+    gateway_src_str = str(gateway_src)
+    inserted = False
+    if gateway_src_str not in sys.path:
+        sys.path.insert(0, gateway_src_str)
+        inserted = True
 
-    return gateway_app
+    def _timeout_handler(_signum: int, _frame: object) -> None:
+        raise TimeoutError(f"Gateway app import timed out after {timeout}s")
+
+    if hasattr(signal, "SIGALRM"):
+        previous_handler = signal.getsignal(signal.SIGALRM)
+        signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(timeout)
+    else:
+        previous_handler = None
+
+    try:
+        from aegi_mcp_gateway.api.main import app as gateway_app  # type: ignore
+
+        return gateway_app
+    finally:
+        if hasattr(signal, "SIGALRM"):
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, previous_handler)
+        if inserted:
+            try:
+                sys.path.remove(gateway_src_str)
+            except ValueError:
+                pass
 
 
 class _AsgiGatewayToolClient:

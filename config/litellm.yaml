@@ -2,28 +2,32 @@
 # 文档: https://docs.litellm.ai/docs/proxy/configs
 
 model_list:
-  # 主力模型 — GPT-5.1
+  # 主力模型 — 通过宿主机 AntiHub Plugin API 访问
   - model_name: default
     litellm_params:
-      model: openai/gpt-5.1
+      model: openai/claude-sonnet-4-20250514
       api_key: os.environ/OPENAI_API_KEY
-      api_base: os.environ/OPENAI_API_BASE
+      api_base: http://127.0.0.1:8045/v1
+      extra_headers:
+        X-Account-Type: kiro
 
-  # 快速/便宜模型（高频调用：claim 抽取等）
+  # 快速模型 — 同上
   - model_name: fast
     litellm_params:
-      model: openai/gpt-5-nano
+      model: openai/claude-sonnet-4-20250514
       api_key: os.environ/OPENAI_API_KEY
-      api_base: os.environ/OPENAI_API_BASE
+      api_base: http://127.0.0.1:8045/v1
+      extra_headers:
+        X-Account-Type: kiro
 
   # Embedding 模型（本地 vLLM BGE-M3）
   - model_name: embedding
     litellm_params:
       model: openai/embedding-3
       api_key: dummy_key
-      api_base: http://host.docker.internal:8001/v1
+      api_base: http://127.0.0.1:8001/v1
 
-  # GPT-5.3-Codex（2026-02-05 发布，编码专用）
+  # GPT-5.3-Codex（OpenAI，配额耗尽时不可用）
   - model_name: codex
     litellm_params:
       model: openai/gpt-5.3-codex

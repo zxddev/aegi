@@ -17,6 +17,9 @@ from aegi_core.contracts.llm_governance import GroundingLevel, grounding_gate
 from aegi_core.db.base import Base
 from aegi_core.services.answer_renderer import EvidenceCitation, render_answer
 from aegi_core.settings import settings
+from conftest import requires_postgres
+
+pytestmark = requires_postgres
 
 
 def _ensure_tables() -> None:

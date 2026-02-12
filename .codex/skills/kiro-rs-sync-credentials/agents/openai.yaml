@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kiro.rs Credential Sync"
+  short_description: "Sync latest Kiro credentials and restart kiro-rs"
+  default_prompt: "Sync newest kiro-cli credentials to the project and restart kiro-rs safely."

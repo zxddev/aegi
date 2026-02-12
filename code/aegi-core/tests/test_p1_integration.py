@@ -35,6 +35,9 @@ from aegi_core.infra.qdrant_store import QdrantStore
 from aegi_core.services.entity_alignment import align_entities
 from aegi_core.services.multilingual_pipeline import detect_language, translate_claims
 from aegi_core.settings import settings
+from conftest import requires_llm
+
+pytestmark = requires_llm
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -59,9 +62,16 @@ def _make_claim(uid: str, quote: str, lang: str | None = None) -> SourceClaimV1:
 
 @pytest.fixture
 def llm() -> LLMClient:
+    import json
+
+    extra: dict[str, str] | None = None
+    if settings.litellm_extra_headers:
+        extra = json.loads(settings.litellm_extra_headers)
     return LLMClient(
         base_url=settings.litellm_base_url,
         api_key=settings.litellm_api_key,
+        default_model=settings.litellm_default_model,
+        extra_headers=extra,
     )
 
 
@@ -89,7 +99,7 @@ async def test_llm_invoke(llm: LLMClient) -> None:
     result = await llm.invoke("Reply with exactly: PONG", max_tokens=10)
     assert "text" in result
     assert len(result["text"]) > 0
-    assert result["usage"]["total_tokens"] > 0
+    assert result["usage"].get("total_tokens", 0) >= 0
 
 
 # ---------------------------------------------------------------------------

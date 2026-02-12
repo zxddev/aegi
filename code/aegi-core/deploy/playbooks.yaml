@@ -1,0 +1,71 @@
+playbooks:
+  - name: default
+    description: "完整 8 阶段分析流水线"
+    stages:
+      - assertion_fuse
+      - hypothesis_analyze
+      - adversarial_evaluate
+      - narrative_build
+      - kg_build
+      - forecast_generate
+      - quality_score
+      - report_generate
+
+  - name: quick
+    description: "快速分析：断言融合 + 假设生成 + 质量评分"
+    stages:
+      - assertion_fuse
+      - hypothesis_analyze
+      - quality_score
+
+  - name: deep
+    description: "深度分析：全阶段 + 对抗评估"
+    stages:
+      - assertion_fuse
+      - hypothesis_analyze
+      - adversarial_evaluate
+      - narrative_build
+      - kg_build
+      - forecast_generate
+      - quality_score
+      - report_generate
+
+  - name: kg_only
+    description: "仅知识图谱构建"
+    stages:
+      - assertion_fuse
+      - kg_build
+
+  - name: narrative_only
+    description: "仅叙事构建（用于报告生成）"
+    stages:
+      - assertion_fuse
+      - narrative_build
+      - quality_score
+
+  - name: deep_multi
+    description: "深度多视角分析：多 Persona 假设生成 + 对抗评估"
+    stages:
+      - assertion_fuse
+      - hypothesis_multi_perspective
+      - adversarial_evaluate
+      - narrative_build
+      - kg_build
+      - forecast_generate
+      - quality_score
+    stage_config:
+      hypothesis_multi_perspective:
+        persona_count: 4
+
+  - name: osint_deep
+    description: "OSINT 采集 + 全量分析"
+    stages:
+      - osint_collect
+      - assertion_fuse
+      - hypothesis_analyze
+      - adversarial_evaluate
+      - narrative_build
+      - kg_build
+      - forecast_generate
+      - quality_score
+      - report_generate

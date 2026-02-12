@@ -1,5 +1,5 @@
 # Author: msq
-"""Ontology versioning service.
+"""本体版本管理服务。
 
 Source: openspec/changes/knowledge-graph-ontology-evolution/tasks.md (2.3)
 Evidence:
@@ -72,6 +72,59 @@ def pin_case(case_uid: str, version: str) -> None:
 
 def get_case_pin(case_uid: str) -> str | None:
     return _case_pins.get(case_uid)
+
+
+async def get_version_db(
+    version: str,
+    session: "AsyncSession",  # noqa: F821
+) -> OntologyVersion | None:
+    """DB-first 读取版本，内存缓存作为快路径。"""
+    cached = _registry.get(version)
+    if cached is not None:
+        return cached
+    import sqlalchemy as sa
+
+    from aegi_core.db.models.ontology import OntologyVersionRow
+
+    row = (
+        await session.execute(
+            sa.select(OntologyVersionRow).where(OntologyVersionRow.version == version)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    obj = OntologyVersion(
+        version=row.version,
+        entity_types=row.entity_types,
+        event_types=row.event_types,
+        relation_types=row.relation_types,
+        created_at=row.created_at,
+    )
+    _registry[version] = obj
+    return obj
+
+
+async def get_case_pin_db(
+    case_uid: str,
+    session: "AsyncSession",  # noqa: F821
+) -> str | None:
+    """DB-first 读取 case pin，内存缓存作为快路径。"""
+    cached = _case_pins.get(case_uid)
+    if cached is not None:
+        return cached
+    import sqlalchemy as sa
+
+    from aegi_core.db.models.ontology import CasePinRow
+
+    row = (
+        await session.execute(
+            sa.select(CasePinRow).where(CasePinRow.case_uid == case_uid)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    _case_pins[case_uid] = row.ontology_version
+    return row.ontology_version
 
 
 # ── async DB 持久化（内存 + Postgres 双写）──────────────────────
@@ -179,11 +232,13 @@ def _compare_type_lists(
     return changes
 
 
-def compute_compatibility(
-    from_ver: str, to_ver: str
+def _compute_compatibility_from_versions(
+    old: OntologyVersion | None,
+    new: OntologyVersion | None,
+    from_ver: str,
+    to_ver: str,
 ) -> CompatibilityReport | ProblemDetail:
-    old = _registry.get(from_ver)
-    new = _registry.get(to_ver)
+    """内部：基于已加载的版本对象计算兼容性。"""
     if not old:
         return ProblemDetail(
             type="urn:aegi:error:not_found",
@@ -235,6 +290,26 @@ def compute_compatibility(
         auto_upgrade_allowed=auto_allowed,
         migration_plan=migration_plan,
     )
+
+
+def compute_compatibility(
+    from_ver: str, to_ver: str
+) -> CompatibilityReport | ProblemDetail:
+    """内存版兼容性计算（向后兼容）。"""
+    return _compute_compatibility_from_versions(
+        _registry.get(from_ver), _registry.get(to_ver), from_ver, to_ver
+    )
+
+
+async def compute_compatibility_db(
+    from_ver: str,
+    to_ver: str,
+    session: "AsyncSession",  # noqa: F821
+) -> CompatibilityReport | ProblemDetail:
+    """DB-first 兼容性计算，多进程安全。"""
+    old = await get_version_db(from_ver, session)
+    new = await get_version_db(to_ver, session)
+    return _compute_compatibility_from_versions(old, new, from_ver, to_ver)
 
 
 def upgrade_ontology(

@@ -1,5 +1,5 @@
 # Author: msq
-"""Narrative API routes – build, detect coordination, trace.
+"""叙事 API 路由 – 构建、协同检测、溯源。
 
 Source: openspec/changes/narrative-intelligence-detection/design.md
 Evidence:
@@ -16,15 +16,17 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aegi_core.api.deps import get_db_session
+from aegi_core.api.deps import get_db_session, get_llm_client
 from aegi_core.contracts.schemas import NarrativeV1, SourceClaimV1
 from aegi_core.db.models.action import Action
 from aegi_core.db.models.narrative import Narrative
+from aegi_core.infra.llm_client import LLMClient
 from aegi_core.services.coordination_detector import (
     CoordinationSignalV1,
     detect_coordination,
 )
 from aegi_core.services.narrative_builder import (
+    abuild_narratives_with_uids,
     build_narratives_with_uids,
     trace_narrative,
 )
@@ -75,10 +77,18 @@ async def build(
     case_uid: str,
     req: BuildRequest,
     session: AsyncSession = Depends(get_db_session),
+    llm: LLMClient = Depends(get_llm_client),
 ) -> BuildResponse:
-    """Build narratives from source claims via clustering + tracing."""
-    narratives, uid_map = build_narratives_with_uids(
+    """从 source claims 聚类 + 溯源构建叙事。"""
+    # LLM 可用时用 embedding cosine similarity，否则 fallback 到 token-overlap
+    try:
+        embed_fn = llm.embed
+    except Exception:  # noqa: BLE001
+        embed_fn = None
+
+    narratives, uid_map = await abuild_narratives_with_uids(
         req.source_claims,
+        embed_fn=embed_fn,
         time_window_hours=req.time_window_hours,
         similarity_threshold=req.similarity_threshold,
     )
@@ -128,8 +138,20 @@ async def detect(
     case_uid: str,
     req: DetectCoordinationRequest,
     session: AsyncSession = Depends(get_db_session),
+    llm: LLMClient = Depends(get_llm_client),
 ) -> DetectCoordinationResponse:
-    """Detect coordinated propagation patterns."""
+    """检测协同传播模式。"""
+    # 预计算 embedding 用于 cosine similarity
+    embeddings: dict[str, list[float]] | None = None
+    try:
+        import asyncio
+
+        tasks = [llm.embed(c.quote) for c in req.source_claims]
+        vectors = await asyncio.gather(*tasks)
+        embeddings = {c.uid: v for c, v in zip(req.source_claims, vectors)}
+    except Exception:  # noqa: BLE001
+        pass  # fallback 到 token-overlap
+
     narratives, uid_map = build_narratives_with_uids(
         req.source_claims,
         time_window_hours=req.time_window_hours,
@@ -141,6 +163,7 @@ async def detect(
         burst_window_hours=req.burst_window_hours,
         similarity_threshold=req.coordination_similarity_threshold,
         min_cluster_size=req.min_cluster_size,
+        embeddings=embeddings,
     )
 
     action_uid = f"act_{uuid4().hex}"
@@ -160,7 +183,7 @@ async def detect(
 
 @router.post("/{narrative_uid}/trace")
 async def trace(case_uid: str, narrative_uid: str, req: TraceRequest) -> TraceResponse:
-    """Trace a narrative back to its source claims in time order."""
+    """按时间顺序溯源叙事到 source claims。"""
     chain = trace_narrative(
         narrative_uid, req.narratives, req.source_claims, req.source_claim_uids_map
     )

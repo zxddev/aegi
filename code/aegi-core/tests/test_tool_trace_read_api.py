@@ -9,6 +9,9 @@ from aegi_core.api.deps import get_tool_client
 from aegi_core.api.main import app
 from aegi_core.db.base import Base
 from aegi_core.settings import settings
+from conftest import requires_postgres
+
+pytestmark = requires_postgres
 
 
 def _ensure_tables() -> None:

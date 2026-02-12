@@ -1,11 +1,11 @@
 # Author: msq
-"""LLM governance contracts (Gate-0).
+"""LLM 治理契约 (Gate-0)。
 
-Source: openspec/changes/foundation-common-contracts/specs/llm-governance/spec.md
-Evidence:
-  - LLM calls MUST be governed by versioned policy (model_id, prompt_version, budget_context).
-  - Ungrounded outputs MUST NOT be emitted as FACT.
-  - Budget and failure paths MUST be deterministic.
+来源: openspec/changes/foundation-common-contracts/specs/llm-governance/spec.md
+约束:
+  - LLM 调用必须受版本化策略管控 (model_id, prompt_version, budget_context)。
+  - 无依据的输出不得标记为 FACT。
+  - 预算和失败路径必须是确定性的。
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
-# -- Grounding gate (task 2.2) -------------------------------------------------
+# -- Grounding 门控 (task 2.2) -------------------------------------------------
 
 
 class GroundingLevel(str, Enum):
@@ -25,16 +25,16 @@ class GroundingLevel(str, Enum):
 
 
 def grounding_gate(has_evidence_citation: bool) -> GroundingLevel:
-    """Return the maximum allowed grounding level.
+    """返回允许的最高 grounding 级别。
 
-    If there is no verifiable evidence citation the output MUST NOT be FACT.
+    没有可验证的证据引用时，输出不得标记为 FACT。
     """
     if has_evidence_citation:
         return GroundingLevel.FACT
     return GroundingLevel.HYPOTHESIS
 
 
-# -- Budget context (used by LLMInvocationRequest) -----------------------------
+# -- 预算上下文 (LLMInvocationRequest 使用) -----------------------------
 
 
 class BudgetContext(BaseModel):
@@ -44,7 +44,7 @@ class BudgetContext(BaseModel):
     remaining_cost_usd: float | None = None
 
 
-# -- LLM invocation request (task 2.1) -----------------------------------------
+# -- LLM 调用请求 (task 2.1) -----------------------------------------
 
 
 class LLMInvocationRequest(BaseModel):
@@ -55,7 +55,7 @@ class LLMInvocationRequest(BaseModel):
     fallback_model_id: str | None = None
 
 
-# -- LLM invocation result -----------------------------------------------------
+# -- LLM 调用结果 -----------------------------------------------------
 
 
 class LLMInvocationResult(BaseModel):
@@ -68,7 +68,7 @@ class LLMInvocationResult(BaseModel):
     trace_id: str | None = None
 
 
-# -- Degraded output (task 2.3) ------------------------------------------------
+# -- 降级输出 (task 2.3) ------------------------------------------------
 
 
 class DegradedReason(str, Enum):

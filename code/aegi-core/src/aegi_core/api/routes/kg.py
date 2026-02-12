@@ -1,5 +1,5 @@
 # Author: msq
-"""KG & ontology API routes.
+"""KG 与本体 API 路由。
 
 Source: openspec/changes/knowledge-graph-ontology-evolution/design.md (API Contract)
 Evidence:
@@ -122,9 +122,14 @@ async def ontology_upgrade(
 
 @router.get("/cases/{case_uid}/ontology/{version}/compatibility_report")
 async def compatibility_report(
-    case_uid: str, version: str, from_version: str = "1.0.0"
+    case_uid: str,
+    version: str,
+    from_version: str = "1.0.0",
+    session: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    report = ontology_versioning.compute_compatibility(from_version, version)
+    report = await ontology_versioning.compute_compatibility_db(
+        from_version, version, session
+    )
     return {"result": report.model_dump()}
 
 

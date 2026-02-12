@@ -117,3 +117,76 @@ class TestRuleDisambiguation:
         result = await disambiguate_entities(entities, case_uid="case_1")
         assert len(result.merge_groups) == 1
         assert "e3" in result.unmatched_uids
+
+
+class TestSemanticDisambiguation:
+    """语义层消歧（mock embedding）。"""
+
+    @staticmethod
+    def _fake_embed_fn() -> dict[str, list[float]]:
+        """返回预设 embedding：Beijing/北京 相似，Tokyo 不同。"""
+        return {
+            "Beijing": [1.0, 0.0, 0.0],
+            "北京": [0.98, 0.1, 0.0],  # 与 Beijing 高相似
+            "Tokyo": [0.0, 1.0, 0.0],  # 与 Beijing 低相似
+        }
+
+    async def test_embedding_merge(self) -> None:
+        """embedding 相似度高于阈值应合并。"""
+        vecs = self._fake_embed_fn()
+
+        class FakeLLM:
+            async def embed(self, text: str, model: str | None = None) -> list[float]:
+                return vecs.get(text, [0.0, 0.0, 1.0])
+
+        entities = [
+            _make_entity("e1", "Beijing"),
+            _make_entity("e2", "北京"),
+            _make_entity("e3", "Tokyo"),
+        ]
+        result = await disambiguate_entities(entities, case_uid="case_1", llm=FakeLLM())
+        # Beijing 和 北京 应被语义层合并
+        semantic_groups = [
+            g for g in result.merge_groups if "embedding" in g.explanation
+        ]
+        assert len(semantic_groups) == 1
+        g = semantic_groups[0]
+        assert set([g.canonical_uid] + g.alias_uids) == {"e1", "e2"}
+        assert g.confidence > 0.9
+        assert not g.uncertain
+        # Tokyo 未匹配
+        assert "e3" in result.unmatched_uids
+
+    async def test_embedding_low_similarity_no_merge(self) -> None:
+        """embedding 相似度低于阈值不应合并。"""
+
+        class FakeLLM:
+            async def embed(self, text: str, model: str | None = None) -> list[float]:
+                # 所有向量正交
+                mapping = {"A": [1, 0, 0], "B": [0, 1, 0], "C": [0, 0, 1]}
+                return mapping.get(text, [0, 0, 0])
+
+        entities = [
+            _make_entity("e1", "A"),
+            _make_entity("e2", "B"),
+            _make_entity("e3", "C"),
+        ]
+        result = await disambiguate_entities(entities, case_uid="case_1", llm=FakeLLM())
+        assert len(result.merge_groups) == 0
+        assert len(result.unmatched_uids) == 3
+
+    async def test_embedding_failure_graceful(self) -> None:
+        """embed 调用失败应跳过该实体，不崩溃。"""
+
+        class FailLLM:
+            async def embed(self, text: str, model: str | None = None) -> list[float]:
+                raise RuntimeError("embedding service down")
+
+        entities = [
+            _make_entity("e1", "Alpha"),
+            _make_entity("e2", "Beta"),
+        ]
+        result = await disambiguate_entities(entities, case_uid="case_1", llm=FailLLM())
+        # 不崩溃，全部归入 unmatched
+        assert len(result.merge_groups) == 0
+        assert len(result.unmatched_uids) == 2

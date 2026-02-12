@@ -131,6 +131,7 @@ class TestQuality001NormalScoring:
             "coverage",
             "consistency",
             "freshness",
+            "logical_consistency",
         }
 
     def test_bias_flags_count_matches(self) -> None:
@@ -294,4 +295,5 @@ class TestQualityEdgeCases:
             "coverage",
             "consistency",
             "freshness",
+            "logical_consistency",
         }

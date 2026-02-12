@@ -22,7 +22,7 @@ _LAST_CALL_MONO: dict[str, float] = {}
 
 
 def _robots_metadata() -> dict:
-    # P0 (fixtures-only): no live robots/ToS enforcement, but we still record the decision metadata.
+    # P0 阶段只跑 fixtures，不做真实 robots/ToS 检查，但仍记录决策元数据
     return {
         "checked": False,
         "allowed": None,

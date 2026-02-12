@@ -1,0 +1,87 @@
+# AEGI 基础设施 — 开发环境
+# 启动: docker compose -f docker-compose.dev.yml up -d
+# 端口分配与 settings.py 一致
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegi-postgres
+    environment:
+      POSTGRES_USER: aegi
+      POSTGRES_PASSWORD: aegi
+      POSTGRES_DB: aegi
+    ports:
+      - "8710:5432"
+    volumes:
+      - aegi-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegi"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: aegi-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/aegi-neo4j
+    ports:
+      - "8715:7687"   # bolt
+      - "8714:7474"   # browser
+    volumes:
+      - aegi-neo4j:/data
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    container_name: aegi-qdrant
+    ports:
+      - "8716:6333"   # REST
+      - "8717:6334"   # gRPC
+    volumes:
+      - aegi-qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: aegi-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: aegi
+      MINIO_ROOT_PASSWORD: aegi-minio-password
+    ports:
+      - "8711:9000"   # API
+      - "8712:9001"   # Console
+    volumes:
+      - aegi-minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: aegi-searxng
+    ports:
+      - "8888:8080"
+    volumes:
+      - aegi-searxng:/etc/searxng
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8888
+    restart: unless-stopped
+
+volumes:
+  aegi-pgdata:
+  aegi-neo4j:
+  aegi-qdrant:
+  aegi-minio:
+  aegi-searxng:

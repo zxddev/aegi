@@ -1,5 +1,5 @@
 # Author: msq
-"""ACH hypothesis engine – support/contradict/gap analysis.
+"""ACH 假设引擎 — 支持/反驳/缺口分析。
 
 Source: openspec/changes/ach-hypothesis-analysis/tasks.md (2.1, 2.3)
         openspec/changes/ach-hypothesis-analysis/design.md
@@ -37,7 +37,7 @@ from aegi_core.contracts.schemas import AssertionV1, SourceClaimV1
 
 
 class LLMBackend(Protocol):
-    """Protocol for LLM invocation (allows test injection)."""
+    """LLM 调用协议（允许测试注入）。"""
 
     async def invoke(
         self, request: LLMInvocationRequest, prompt: str
@@ -161,8 +161,26 @@ async def analyze_hypothesis_llm(
         )
 
     prompt = _build_ach_prompt(hypothesis_text, assertions)
-    result = await llm.invoke(prompt, max_tokens=4096)
-    parsed = _parse_ach_result(result["text"])
+    try:
+        parsed = await llm.invoke_structured(
+            prompt,
+            ACHAnalysisResult,
+            max_tokens=4096,
+            max_retries=2,
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "ACH structured output failed for hypothesis %r, returning degraded result",
+            hypothesis_text[:60],
+            exc_info=True,
+            extra={"degraded": True, "component": "hypothesis_engine"},
+        )
+        return ACHResult(
+            hypothesis_text=hypothesis_text,
+            grounding_level=grounding_gate(False),
+        )
 
     # 从 judgments 计算 supporting/contradicting/gap
     uid_set = {a.uid for a in assertions}

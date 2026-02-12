@@ -19,7 +19,7 @@ router = APIRouter(prefix="/tools", tags=["tools"])
 _HTTP_TIMEOUT = 15.0
 
 
-# ── helpers ──────────────────────────────────────────────────────
+# ── 辅助函数 ──────────────────────────────────────────────────────
 
 
 def _policy_block(settings, *, tool_name: str) -> dict:
@@ -59,7 +59,7 @@ def _trace(
     )
 
 
-# ── meta_search ──────────────────────────────────────────────────
+# ── 元搜索 ──────────────────────────────────────────────────────
 
 
 class MetaSearchRequest(BaseModel):
@@ -102,7 +102,7 @@ async def meta_search(req: MetaSearchRequest) -> dict:
     return response
 
 
-# ── archive_url ──────────────────────────────────────────────────
+# ── URL 归档 ──────────────────────────────────────────────────
 
 
 class ArchiveUrlRequest(BaseModel):
@@ -230,7 +230,7 @@ async def archive_url(req: ArchiveUrlRequest) -> dict:
     return response
 
 
-# ── doc_parse ────────────────────────────────────────────────────
+# ── 文档解析 ────────────────────────────────────────────────────
 
 
 class DocParseRequest(BaseModel):

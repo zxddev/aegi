@@ -44,6 +44,13 @@ class Hypothesis(Base):
     segment_ref: Mapped[str | None] = mapped_column(sa.String(128))
     media_time_range: Mapped[dict | None] = mapped_column(JSONB)
 
+    prior_probability: Mapped[float | None] = mapped_column(
+        sa.Float(), default=None, comment="先验概率（初始 = 1/N）"
+    )
+    posterior_probability: Mapped[float | None] = mapped_column(
+        sa.Float(), default=None, comment="当前后验概率"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False
     )

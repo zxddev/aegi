@@ -5,9 +5,14 @@
 - `kg_mapper.build_graph()` 当前按 `attributed_to` 精确匹配去重，"China"/"PRC"/"中国" 会创建 3 个独立实体
 - `entity_alignment.py` 是 P1 的跨语言 claim 对齐，不是实体消歧
 
-## 已完成
+## 已完成 ✅ 全部完成
 - `build_from_assertions` API 已写入 Neo4j（MERGE 幂等，支持增量）
 - Neo4jStore 有完整的 upsert_nodes/upsert_edges/get_neighbors/find_path
+- `entity_disambiguator.py` 服务实现（规则归一化 + embedding 语义相似度 + 审计）
+- `kg.py` 路由 `POST /cases/{case_uid}/kg/disambiguate`（含 Neo4j SAME_AS 写入）
+- 14 单元测试（归一化、别名表、规则层合并、语义层 mock embedding、容错）
+- 1 API 集成测试（test_disambiguate_api）
+- 197 passed, 0 failed
 
 ## 设计方案
 

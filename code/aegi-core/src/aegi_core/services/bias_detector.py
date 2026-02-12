@@ -1,5 +1,5 @@
 # Author: msq
-"""Bias detection for meta-cognition quality scoring.
+"""偏见检测，用于元认知质量评分。
 
 Source: openspec/changes/meta-cognition-quality-scoring/design.md
 Evidence:
@@ -91,6 +91,37 @@ def _confirmation_bias(
     return flags
 
 
+def _source_diversity_bias(
+    source_claims: list[SourceClaimV1],
+) -> list[BiasFlag]:
+    """来源多样性不足：所有 claims 来自同类型来源或同一地区。"""
+    if len(source_claims) < 2:
+        return []
+    flags: list[BiasFlag] = []
+    # 检测来源同质性（所有 attributed_to 含相同前缀/域名模式）
+    sources = [sc.attributed_to or "" for sc in source_claims]
+    non_empty = [s for s in sources if s]
+    if len(non_empty) >= 2:
+        # 简单启发：如果所有来源名称共享前 3 个字符（如 "CNN", "BBC"）
+        # 更实用的检测：独立来源数 / 总 claims 数
+        unique_sources = set(non_empty)
+        diversity_ratio = len(unique_sources) / len(non_empty)
+        if diversity_ratio < 0.3 and len(non_empty) >= 3:
+            flags.append(
+                BiasFlag(
+                    kind="source_homogeneity",
+                    description=(
+                        f"Low source diversity: {len(unique_sources)} unique "
+                        f"sources across {len(non_empty)} claims "
+                        f"(ratio={diversity_ratio:.2f})"
+                    ),
+                    source_claim_uids=[sc.uid for sc in source_claims],
+                    rationale="Insufficient independent corroboration",
+                )
+            )
+    return flags
+
+
 def detect_biases(
     assertions: list[AssertionV1],
     source_claims: list[SourceClaimV1],
@@ -109,6 +140,7 @@ def detect_biases(
     flags: list[BiasFlag] = []
     flags.extend(_single_source_dependency(assertions, source_claims))
     flags.extend(_single_stance_bias(source_claims))
+    flags.extend(_source_diversity_bias(source_claims))
     if hypotheses:
         flags.extend(_confirmation_bias(hypotheses, assertions))
     return flags

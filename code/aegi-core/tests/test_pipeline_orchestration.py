@@ -30,6 +30,7 @@ from aegi_core.services.pipeline_orchestrator import (
     PipelineResult,
     StageResult,
 )
+from conftest import requires_postgres
 
 FIXTURES = Path(__file__).parent / "fixtures" / "defense-geopolitics"
 CASE_UID = "case_pipeline_test"
@@ -295,6 +296,7 @@ class TestDegradationPaths:
 # -- Task 3.1–3.2: API 桩测试 -------------------------------------------------
 
 
+@requires_postgres
 class TestOrchestrationAPI:
     """API 路由桩测试。"""
 

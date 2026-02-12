@@ -1,11 +1,11 @@
 # Author: msq
-"""Confidence scoring and quality report for meta-cognition.
+"""置信度评分与元认知质量报告。
 
 Source: openspec/changes/meta-cognition-quality-scoring/design.md
 Evidence:
-  - confidence_breakdown: evidence_strength / coverage / consistency / freshness.
-  - Upstream missing → pending_inputs, no pseudo-complete score.
-  - QualityReportV1 output with trace_id.
+  - confidence_breakdown: evidence_strength / coverage / consistency / freshness。
+  - 上游缺失 → pending_inputs，不伪造完整分数。
+  - 输出 QualityReportV1，带 trace_id。
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from aegi_core.services.bias_detector import BiasFlag, detect_biases
 from aegi_core.services.blindspot_detector import BlindspotItem, detect_blindspots
 
 
-# -- Models --------------------------------------------------------------------
+# -- 模型 --------------------------------------------------------------------
 
 
 class DimensionStatus(str, Enum):
@@ -60,7 +60,7 @@ class QualityReportV1(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-# -- Input container -----------------------------------------------------------
+# -- 输入容器 -----------------------------------------------------------
 
 
 class QualityInput(BaseModel):
@@ -75,7 +75,7 @@ class QualityInput(BaseModel):
     forecasts: list[dict] | None = None
 
 
-# -- Scoring functions ---------------------------------------------------------
+# -- 评分函数 ---------------------------------------------------------
 
 
 def _evidence_strength(
@@ -167,6 +167,55 @@ def _freshness(source_claims: list[SourceClaimV1]) -> ConfidenceDimension:
     )
 
 
+def _logical_consistency(
+    assertions: list[AssertionV1],
+    source_claims: list[SourceClaimV1],
+) -> ConfidenceDimension:
+    """逻辑一致性：检测 assertion 间的矛盾信号。"""
+    if len(assertions) < 2:
+        return ConfidenceDimension(
+            name="logical_consistency", score=1.0, detail="insufficient data"
+        )
+    # 检测 confirmed vs denied 矛盾
+    confirmed_kw = {"confirmed", "affirmed", "verified"}
+    denied_kw = {"denied", "rejected", "refuted"}
+    sc_map = {sc.uid: sc for sc in source_claims}
+    contradictions = 0
+    pairs_checked = 0
+    for i, a in enumerate(assertions):
+        for b in assertions[i + 1 :]:
+            # 只比较同一 attributed_to 的 assertion
+            quotes_a = [
+                sc_map[uid].quote.lower()
+                for uid in a.source_claim_uids
+                if uid in sc_map
+            ]
+            quotes_b = [
+                sc_map[uid].quote.lower()
+                for uid in b.source_claim_uids
+                if uid in sc_map
+            ]
+            for qa in quotes_a:
+                for qb in quotes_b:
+                    pairs_checked += 1
+                    a_conf = any(k in qa for k in confirmed_kw)
+                    a_deny = any(k in qa for k in denied_kw)
+                    b_conf = any(k in qb for k in confirmed_kw)
+                    b_deny = any(k in qb for k in denied_kw)
+                    if (a_conf and b_deny) or (a_deny and b_conf):
+                        contradictions += 1
+    if pairs_checked == 0:
+        return ConfidenceDimension(
+            name="logical_consistency", score=1.0, detail="no pairs to check"
+        )
+    score = round(1.0 - min(contradictions / pairs_checked, 1.0), 4)
+    return ConfidenceDimension(
+        name="logical_consistency",
+        score=score,
+        detail=f"contradictions={contradictions}/{pairs_checked}",
+    )
+
+
 def score_confidence(inp: QualityInput) -> QualityReportV1:
     """计算元认知质量评分。
 
@@ -183,6 +232,7 @@ def score_confidence(inp: QualityInput) -> QualityReportV1:
         _coverage(inp.assertions, inp.hypotheses),
         _consistency(inp.hypotheses, inp.narratives, inp.forecasts),
         _freshness(inp.source_claims),
+        _logical_consistency(inp.assertions, inp.source_claims),
     ]
 
     bias_flags = detect_biases(inp.assertions, inp.source_claims, inp.hypotheses)

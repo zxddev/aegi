@@ -27,6 +27,7 @@ from aegi_core.db.models.assertion import Assertion
 from aegi_core.db.models.hypothesis import Hypothesis
 from aegi_core.db.models.source_claim import SourceClaim
 from aegi_core.infra.llm_client import LLMClient
+from aegi_core.services.hypothesis_adversarial import aevaluate_adversarial
 from aegi_core.services.hypothesis_engine import (
     analyze_hypothesis_llm,
     generate_hypotheses as svc_generate,
@@ -202,7 +203,24 @@ async def score_hypothesis(
     hyp.coverage_score = result.coverage_score
     hyp.confidence = result.confidence
     hyp.gap_list = result.gap_list
-    hyp.adversarial_result = {}
+
+    # 三角对抗评估（LLM 驱动，无 LLM 时 fallback 到规则版本）
+    rows_sc = await session.execute(
+        sa.select(SourceClaim).where(SourceClaim.case_uid == case_uid)
+    )
+    source_claims = [_sc_to_v1(r) for r in rows_sc.scalars().all()]
+    adv_result, _, _ = await aevaluate_adversarial(
+        result,
+        assertions,
+        source_claims,
+        case_uid=case_uid,
+        llm=llm_client,
+    )
+    from dataclasses import asdict
+
+    adv_dict = asdict(adv_result)
+    adv_dict["grounding_level"] = adv_result.grounding_level.value
+    hyp.adversarial_result = adv_dict
 
     action_uid = f"act_{uuid4().hex}"
     session.add(
@@ -224,7 +242,7 @@ async def score_hypothesis(
         coverage_score=result.coverage_score,
         confidence=result.confidence,
         gap_list=result.gap_list,
-        adversarial={},
+        adversarial=hyp.adversarial_result,
         action_uid=action_uid,
         trace_id=hyp.trace_id or "",
     )

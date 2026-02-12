@@ -1,5 +1,5 @@
 # Author: msq
-"""Predictive signals – indicator series scoring and trend detection.
+"""预测信号 — 指标序列评分与趋势检测。
 
 Source: openspec/changes/predictive-causal-scenarios/tasks.md (2.2)
         openspec/changes/predictive-causal-scenarios/design.md
@@ -30,6 +30,7 @@ class SignalScore:
     indicator_name: str
     trend: str = "stable"  # rising / falling / stable
     momentum: float = 0.0  # -1.0 ~ 1.0
+    acceleration: float = 0.0  # 二阶导数：正=加速，负=减速
     alert_level: float = 0.0  # 0.0 ~ 1.0
 
 
@@ -61,10 +62,17 @@ def score_indicator(series: IndicatorSeriesV1) -> SignalScore:
     momentum = max(-1.0, min(1.0, avg_delta * 2))
     alert_level = min(1.0, max(0.0, series.values[-1]))
 
+    # 二阶差分：变化加速度
+    acceleration = 0.0
+    if len(deltas) >= 2:
+        second_deltas = [deltas[i] - deltas[i - 1] for i in range(1, len(deltas))]
+        acceleration = max(-1.0, min(1.0, sum(second_deltas) / len(second_deltas) * 2))
+
     return SignalScore(
         indicator_name=series.name,
         trend=trend,
         momentum=momentum,
+        acceleration=round(acceleration, 4),
         alert_level=alert_level,
     )
 

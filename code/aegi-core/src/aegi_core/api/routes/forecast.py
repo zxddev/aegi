@@ -18,16 +18,17 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aegi_core.api.deps import get_db_session
+from aegi_core.api.deps import get_db_session, get_llm_client
 from aegi_core.api.errors import not_found
 from aegi_core.contracts.schemas import AssertionV1, HypothesisV1, NarrativeV1
 from aegi_core.db.models.action import Action
 from aegi_core.db.models.assertion import Assertion
 from aegi_core.db.models.hypothesis import Hypothesis
 from aegi_core.db.models.narrative import Narrative
+from aegi_core.infra.llm_client import LLMClient
 from aegi_core.services.scenario_generator import (
+    agenerate_forecasts as svc_agenerate,
     backtest_forecast as svc_backtest,
-    generate_forecasts as svc_generate,
 )
 
 router = APIRouter(prefix="/cases/{case_uid}/forecast", tags=["forecast"])
@@ -112,6 +113,7 @@ async def generate_forecast(
     case_uid: str,
     body: ForecastGenerateIn,
     session: AsyncSession = Depends(get_db_session),
+    llm: LLMClient = Depends(get_llm_client),
 ) -> ForecastGenerateOut:
     """生成预测情景。"""
     rows_h = await session.execute(
@@ -141,11 +143,12 @@ async def generate_forecast(
             )
         )
 
-    forecasts, svc_action, svc_trace = svc_generate(
+    forecasts, svc_action, svc_trace = await svc_agenerate(
         hypotheses=hypotheses,
         assertions=assertions,
         narratives=narratives_v1 or None,
         case_uid=case_uid,
+        llm=llm,
     )
 
     action_uid = f"act_{uuid4().hex}"

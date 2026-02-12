@@ -1,5 +1,5 @@
 # Author: msq
-"""Adversarial hypothesis evaluation – Defense/Prosecution/Judge triad.
+"""对抗性假设评估 — Defense/Prosecution/Judge 三角辩论。
 
 Source: openspec/changes/ach-hypothesis-analysis/tasks.md (2.2)
         openspec/changes/ach-hypothesis-analysis/design.md (Adversarial Reasoning Flow)
@@ -16,10 +16,30 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from pydantic import BaseModel, Field as PydanticField
+
 from aegi_core.contracts.audit import ActionV1, ToolTraceV1
 from aegi_core.contracts.llm_governance import GroundingLevel, grounding_gate
 from aegi_core.contracts.schemas import AssertionV1, SourceClaimV1
+from typing import TYPE_CHECKING
+
 from aegi_core.services.hypothesis_engine import ACHResult
+
+if TYPE_CHECKING:
+    from aegi_core.infra.llm_client import LLMClient
+
+
+# ---------------------------------------------------------------------------
+# LLM 结构化输出的 Pydantic 模型（按角色）
+# ---------------------------------------------------------------------------
+
+
+class _LLMRoleVerdict(BaseModel):
+    """单个对抗角色的 LLM 输出模型。"""
+
+    argument: str = ""
+    evidence_refs: list[str] = PydanticField(default_factory=list)
+    confidence: float = 0.5
 
 
 @dataclass
@@ -230,3 +250,202 @@ def evaluate_adversarial(
     )
 
     return result, action, tool_trace
+
+
+# ---------------------------------------------------------------------------
+# LLM 驱动版本 — 三角色辩论（defense / prosecution / judge）
+# ---------------------------------------------------------------------------
+
+_ROLE_PROMPT_TMPL = """你是一位{role_desc}。
+分析以下假设及其证据，从你的角色视角给出论证。
+
+假设：{hypothesis_text}
+置信度：{confidence:.2f}
+覆盖度：{coverage:.2f}
+
+支持证据 UIDs：{supporting}
+反对证据 UIDs：{contradicting}
+证据缺口：{gaps}
+
+{evidence_context}
+
+请严格以 JSON 格式输出（不要 markdown 代码块）：
+{{"argument": "你的论证", "evidence_refs": ["引用的证据UID"], "confidence": 0.0到1.0}}
+"""
+
+_PROSECUTION_EXTRA = """重要指令：你必须主动从证据中寻找可以反驳假设的论点。即使没有直接标记为"反对"的证据，你也应该：
+1. 检查支持证据中是否存在可被重新解读为不支持假设的内容
+2. 指出证据链中的逻辑跳跃和未验证假设
+3. 提出替代解释（如果证据同样支持其他假设）
+绝对不要说"无反证"——总有可以质疑的角度。"""
+
+_ROLE_DESCS = {
+    "defense": "辩护律师，负责构建支持假设的最强论证链",
+    "prosecution": "检察官，负责寻找假设的漏洞和反证",
+    "judge": "法官，综合控辩双方意见做出平衡裁决",
+}
+
+
+def _parse_role_json(text: str) -> dict | None:
+    """从 LLM 输出中提取 JSON。（旧版 — 仅保留做参考。）"""
+    from aegi_core.infra.llm_client import parse_llm_json
+
+    result = parse_llm_json(text)
+    return result if isinstance(result, dict) else None
+
+
+def _verdict_from_model(role: str, data: _LLMRoleVerdict) -> AgentVerdict:
+    """将 LLM Pydantic 输出转为 AgentVerdict。"""
+    return AgentVerdict(
+        role=role,
+        assertion_uids=data.evidence_refs,
+        rationale=data.argument,
+        gaps=[],
+    )
+
+
+def _json_to_verdict(role: str, data: dict) -> AgentVerdict:
+    """将 LLM JSON 输出转为 AgentVerdict。"""
+    return AgentVerdict(
+        role=role,
+        assertion_uids=data.get("evidence_refs", []),
+        rationale=data.get("argument", ""),
+        gaps=[],
+    )
+
+
+async def aevaluate_adversarial(
+    ach: ACHResult,
+    assertions: list[AssertionV1],
+    source_claims: list[SourceClaimV1],
+    *,
+    case_uid: str,
+    trace_id: str | None = None,
+    llm: "LLMClient | None" = None,
+) -> tuple[AdversarialResult, ActionV1, ToolTraceV1]:
+    """LLM 驱动的三角对抗评估。无 LLM 时 fallback 到规则版本。"""
+    if llm is None:
+        return evaluate_adversarial(
+            ach,
+            assertions,
+            source_claims,
+            case_uid=case_uid,
+            trace_id=trace_id,
+        )
+
+    _trace_id = trace_id or uuid.uuid4().hex
+    _span_id = uuid.uuid4().hex[:16]
+    now = datetime.now(timezone.utc)
+
+    # 构建证据摘要供 LLM 参考
+    _evidence_lines = []
+    for sc in source_claims[:15]:
+        _evidence_lines.append(f"- [{sc.attributed_to or 'unknown'}] {sc.quote[:150]}")
+    _evidence_text = "\n".join(_evidence_lines) if _evidence_lines else "无"
+
+    prompt_ctx = {
+        "hypothesis_text": ach.hypothesis_text,
+        "confidence": ach.confidence,
+        "coverage": ach.coverage_score,
+        "supporting": ", ".join(ach.supporting_assertion_uids) or "无",
+        "contradicting": ", ".join(ach.contradicting_assertion_uids) or "无",
+        "gaps": "; ".join(ach.gap_list) or "无",
+    }
+
+    # 三角色各一次 LLM 调用，失败时 fallback 到规则版本
+    defense = _build_defense(ach, assertions, source_claims)
+    prosecution = _build_prosecution(ach, assertions, source_claims)
+
+    for role, fallback in [("defense", defense), ("prosecution", prosecution)]:
+        try:
+            extra = _PROSECUTION_EXTRA if role == "prosecution" else ""
+            prompt = _ROLE_PROMPT_TMPL.format(
+                role_desc=_ROLE_DESCS[role],
+                evidence_context=f"原始情报摘要：\n{_evidence_text}\n\n{extra}",
+                **prompt_ctx,
+            )
+            verdict_model = await llm.invoke_structured(
+                prompt,
+                response_model=_LLMRoleVerdict,
+                max_tokens=512,
+            )
+            verdict = _verdict_from_model(role, verdict_model)
+            if role == "defense":
+                defense = verdict
+            else:
+                prosecution = verdict
+        except Exception:  # noqa: BLE001 — LLM 失败时保留规则结果
+            pass
+
+    # judge 综合控辩结果
+    judge = _build_judge(defense, prosecution, ach)
+    try:
+        judge_prompt = _ROLE_PROMPT_TMPL.format(
+            role_desc=(
+                f"{_ROLE_DESCS['judge']}\n\n"
+                f"辩护方论证：{defense.rationale}\n"
+                f"检察方论证：{prosecution.rationale}"
+            ),
+            evidence_context=f"原始情报摘要：\n{_evidence_text}",
+            **prompt_ctx,
+        )
+        judge_model = await llm.invoke_structured(
+            judge_prompt,
+            response_model=_LLMRoleVerdict,
+            max_tokens=512,
+        )
+        judge = _verdict_from_model("judge", judge_model)
+        judge.gaps = list(set(defense.gaps + prosecution.gaps))
+    except Exception:  # noqa: BLE001
+        pass
+
+    has_conflict = bool(defense.assertion_uids and prosecution.assertion_uids)
+    conflict_summary = ""
+    if has_conflict:
+        conflict_summary = (
+            f"Defense: {defense.rationale[:100]}; "
+            f"Prosecution: {prosecution.rationale[:100]}; "
+            f"Judge: {judge.rationale[:100]}"
+        )
+
+    has_evidence = bool(defense.assertion_uids)
+    grounding = grounding_gate(has_evidence)
+
+    adv_result = AdversarialResult(
+        defense=defense,
+        prosecution=prosecution,
+        judge=judge,
+        conflict_summary=conflict_summary,
+        grounding_level=grounding,
+    )
+
+    action = ActionV1(
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_type="ach_adversarial_llm",
+        rationale=(
+            f"LLM adversarial: defense={len(defense.assertion_uids)}, "
+            f"prosecution={len(prosecution.assertion_uids)}"
+        ),
+        inputs={"hypothesis_text": ach.hypothesis_text},
+        outputs=adv_result.to_dict(),
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
+    )
+
+    tool_trace = ToolTraceV1(
+        uid=uuid.uuid4().hex,
+        case_uid=case_uid,
+        action_uid=action.uid,
+        tool_name="ach_adversarial_llm",
+        request={"hypothesis_text": ach.hypothesis_text},
+        response=adv_result.to_dict(),
+        status="ok",
+        policy={"prompt_version": "ach_adversarial_llm_v1"},
+        trace_id=_trace_id,
+        span_id=_span_id,
+        created_at=now,
+    )
+
+    return adv_result, action, tool_trace

@@ -28,6 +28,11 @@ build/
 .DS_Store
 Thumbs.db
 
+# Temp data / embedded repos
+code/temp/
+code/openclaw/
+references/opensource/
+
 # Lock files (keep uv.lock tracked)
 开源项目参考/
 .env

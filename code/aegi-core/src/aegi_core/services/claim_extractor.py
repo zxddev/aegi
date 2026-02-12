@@ -1,11 +1,11 @@
 # Author: msq
-"""Claim extraction service.
+"""Claim 提取服务。
 
 Source: openspec/changes/automated-claim-extraction-fusion/tasks.md (1.1–1.3)
 Evidence:
-  - SourceClaim extraction MUST preserve quote selectors (spec.md).
-  - Empty selectors MUST be rejected (design.md: LLM Strategy #3).
-  - All LLM calls MUST use LLMInvocationRequest/BudgetContext (parallel-ai-execution-protocol.md §5.2).
+  - SourceClaim 提取必须保留 quote selectors (spec.md)。
+  - 空 selectors 必须拒收 (design.md: LLM Strategy #3)。
+  - 所有 LLM 调用必须使用 LLMInvocationRequest/BudgetContext (parallel-ai-execution-protocol.md §5.2)。
 """
 
 from __future__ import annotations
@@ -27,10 +27,10 @@ from aegi_core.contracts.schemas import Modality, SourceClaimV1
 
 
 class LLMBackend(Protocol):
-    """Protocol for LLM invocation (allows test injection)."""
+    """LLM 调用协议（允许测试注入）。"""
 
     async def invoke(self, request: LLMInvocationRequest, prompt: str) -> list[dict]:
-        """Return raw claim dicts extracted by the LLM."""
+        """返回 LLM 提取的原始 claim 字典列表。"""
         ...
 
 
@@ -52,26 +52,26 @@ async def extract_from_chunk(
 ) -> tuple[
     list[SourceClaimV1], ActionV1, ToolTraceV1, LLMInvocationResult | DegradedOutput
 ]:
-    """Extract SourceClaimV1 instances from a single chunk.
+    """从单个 chunk 中提取 SourceClaimV1。
 
     Args:
-        chunk_uid: Unique identifier of the chunk.
-        chunk_text: Raw text content of the chunk.
-        anchor_set: Anchor selectors from the chunk.
-        artifact_version_uid: Parent artifact version.
-        evidence_uid: Evidence record this chunk belongs to.
-        case_uid: Owning case.
-        llm: LLM backend (injectable).
-        budget: Token/cost budget for this invocation.
-        model_id: Model identifier for governance.
-        trace_id: Distributed trace id.
+        chunk_uid: chunk 唯一标识。
+        chunk_text: chunk 原始文本。
+        anchor_set: chunk 的锚点选择器。
+        artifact_version_uid: 父 artifact 版本。
+        evidence_uid: 所属 evidence 记录。
+        case_uid: 所属 case。
+        llm: LLM 后端（可注入）。
+        budget: 本次调用的 token/cost 预算。
+        model_id: 治理用的模型标识。
+        trace_id: 分布式追踪 ID。
 
     Returns:
-        Tuple of (claims, action, tool_trace, llm_result_or_degraded).
+        (claims, action, tool_trace, llm_result_or_degraded) 元组。
 
     Raises:
-        Nothing – validation failures are returned as empty list with
-        the action recording the rejection reason.
+        不抛异常 — 验证失败时返回空列表，
+        action 中记录拒绝原因。
     """
     _trace_id = trace_id or uuid.uuid4().hex
     _span_id = uuid.uuid4().hex[:16]
@@ -191,6 +191,27 @@ async def extract_from_chunk(
         span_id=_span_id,
         created_at=now,
     )
+
+    # ── emit claim.extracted event (review mod C: timestamp in source_event_uid) ──
+    if valid_claims:
+        from aegi_core.services.event_bus import get_event_bus, AegiEvent
+        import time as _time
+
+        bus = get_event_bus()
+        await bus.emit(
+            AegiEvent(
+                event_type="claim.extracted",
+                case_uid=case_uid,
+                payload={
+                    "summary": f"Extracted {len(valid_claims)} claims from chunk {chunk_uid}",
+                    "chunk_uid": chunk_uid,
+                    "claim_count": len(valid_claims),
+                    "claim_uids": [c.uid for c in valid_claims],
+                },
+                severity="low",
+                source_event_uid=f"claim:{case_uid}:{chunk_uid}:{int(_time.time())}",
+            )
+        )
 
     return valid_claims, action, tool_trace, llm_result
 

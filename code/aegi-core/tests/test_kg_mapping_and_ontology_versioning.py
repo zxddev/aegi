@@ -31,6 +31,7 @@ from aegi_core.services.ontology_versioning import (
     pin_case,
     get_case_pin,
 )
+from conftest import requires_llm, requires_postgres
 
 FIXTURES = Path(__file__).parent / "fixtures" / "defense-geopolitics"
 
@@ -150,6 +151,8 @@ class TestOntologyVersioning:
         assert report.error_code == "not_found"
 
 
+@requires_postgres
+@requires_llm
 class TestKGAPI:
     @pytest.fixture
     def app(self):
@@ -240,3 +243,53 @@ class TestKGAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert data["result"]["overall_level"] == "breaking"
+
+    async def test_disambiguate_api(self, client: AsyncClient) -> None:
+        """POST /cases/{case_uid}/kg/disambiguate 返回 merge_groups。"""
+        case_uid = await self._create_case(client, title="disamb-test")
+        now = datetime.now(timezone.utc).isoformat()
+        entities = [
+            {
+                "uid": "e1",
+                "case_uid": case_uid,
+                "label": "China",
+                "entity_type": "actor",
+                "properties": {},
+                "source_assertion_uids": [],
+                "ontology_version": "1.0.0",
+                "created_at": now,
+            },
+            {
+                "uid": "e2",
+                "case_uid": case_uid,
+                "label": "PRC",
+                "entity_type": "actor",
+                "properties": {},
+                "source_assertion_uids": [],
+                "ontology_version": "1.0.0",
+                "created_at": now,
+            },
+            {
+                "uid": "e3",
+                "case_uid": case_uid,
+                "label": "Russia",
+                "entity_type": "actor",
+                "properties": {},
+                "source_assertion_uids": [],
+                "ontology_version": "1.0.0",
+                "created_at": now,
+            },
+        ]
+        resp = await client.post(
+            f"/cases/{case_uid}/kg/disambiguate",
+            json={"entities": entities},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "merge_groups" in data
+        assert len(data["merge_groups"]) == 1
+        g = data["merge_groups"][0]
+        assert g["canonical_uid"] == "e1"
+        assert "e2" in g["alias_uids"]
+        assert "action_uid" in data
+        assert "e3" in data["unmatched_uids"]

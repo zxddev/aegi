@@ -2,6 +2,9 @@
 import sqlalchemy as sa
 
 from aegi_core.db.session import ENGINE
+from conftest import requires_postgres
+
+pytestmark = requires_postgres
 
 
 async def test_db_select_1() -> None:

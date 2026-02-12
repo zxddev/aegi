@@ -248,6 +248,16 @@ async def import_fixture(
         if isinstance(fixture_sc_uid, str) and fixture_sc_uid:
             fixture_sc_uid_to_uid[fixture_sc_uid] = source_claim_uid
 
+    # 构建 fixture SC UID 到 quote 文本的映射，用于 assertion value 补充
+    fixture_sc_uid_to_quote: dict[str, str] = {}
+    for sc in sc_src:
+        if not isinstance(sc, dict):
+            continue
+        fsc_uid = sc.get("source_claim_uid")
+        fsc_quote = sc.get("quote")
+        if isinstance(fsc_uid, str) and isinstance(fsc_quote, str):
+            fixture_sc_uid_to_quote[fsc_uid] = fsc_quote
+
     # --- assertions ---
     assertions_doc = json.loads(
         ((fixtures_root / fixture_item["assertions_path"]).read_text(encoding="utf-8"))
@@ -278,12 +288,25 @@ async def import_fixture(
         assertion_uid = _det_uid(case_uid, fixture_id, "as", str(a_idx))
         assertion_uids.append(assertion_uid)
 
+        # 用 source claim 的 quote 补充 assertion value，方便下游文本提取
+        assertion_value = a.get("value")
+        if not assertion_value:
+            quotes = [
+                fixture_sc_uid_to_quote[uid]
+                for uid in (a.get("source_claim_uids") or [])
+                if isinstance(uid, str) and uid in fixture_sc_uid_to_quote
+            ]
+            assertion_value = {
+                "source_claim_count": len(mapped_sc_uids),
+                "rationale": "; ".join(quotes) if quotes else "",
+            }
+
         session.add(
             Assertion(
                 uid=assertion_uid,
                 case_uid=case_uid,
                 kind=a.get("kind", "event"),
-                value=a.get("value") or {"source_claim_count": len(mapped_sc_uids)},
+                value=assertion_value,
                 source_claim_uids=mapped_sc_uids,
                 confidence=a.get("confidence"),
             )
