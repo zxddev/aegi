@@ -77,5 +77,10 @@ class Settings(BaseSettings):
     pykeen_num_epochs: int = 100
     pykeen_min_triples: int = 50
 
+    # DoWhy 因果推断
+    causal_min_observations: int = 10
+    causal_significance_level: float = 0.05
+    causal_time_window: str = "1d"
+
 
 settings = Settings()

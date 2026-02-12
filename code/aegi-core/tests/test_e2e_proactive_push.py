@@ -1,3 +1,4 @@
+# Author: msq
 """端到端集成测试：主动推送完整闭环。
 
 场景：创建 case → 创建 subscription → 触发 pipeline.completed 事件
@@ -32,6 +33,16 @@ def _reset_bus():
     reset_event_bus()
     yield
     reset_event_bus()
+
+
+@pytest.fixture(autouse=True)
+async def _clean_push_logs():
+    """清理推送与事件日志，避免测试间节流串扰。"""
+    async with AsyncSession(ENGINE, expire_on_commit=False) as session:
+        await session.execute(sa.delete(PushLog))
+        await session.execute(sa.delete(EventLog))
+        await session.commit()
+    yield
 
 
 async def _create_case(session: AsyncSession) -> str:
@@ -129,7 +140,7 @@ async def test_proactive_push_full_loop():
 
 
 @pytest.mark.asyncio
-async def test_proactive_push_via_event_bus():
+async def test_proactive_push_via_event_bus(monkeypatch: pytest.MonkeyPatch):
     """通过 EventBus emit_and_wait 触发 PushEngine handler 的完整链路。"""
 
     async with AsyncSession(ENGINE, expire_on_commit=False) as session:
@@ -151,6 +162,9 @@ async def test_proactive_push_via_event_bus():
         mock_notify.return_value = True
 
         from aegi_core.services.push_engine import create_push_handler
+        from aegi_core.settings import settings
+
+        monkeypatch.setattr(settings, "event_push_max_per_hour", 1000)
 
         handler = create_push_handler()
         bus = get_event_bus()

@@ -32,6 +32,7 @@ dependencies = [
 [project.optional-dependencies]
 analytics = [
   "pykeen>=1.10",
+  "dowhy>=0.11",
 ]
 ingest = [
   "pypdf>=4.0",

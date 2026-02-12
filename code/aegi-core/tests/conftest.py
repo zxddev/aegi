@@ -111,6 +111,7 @@ def _reset_infra_singletons():
     """每个测试后清除 lru_cache 单例，避免跨测试 event loop 污染。"""
     yield
     from aegi_core.api.deps import (
+        get_causal_inference_engine,
         get_llm_client,
         get_link_predictor,
         get_neo4j_store,
@@ -122,6 +123,7 @@ def _reset_infra_singletons():
     for cached_fn in (
         get_llm_client,
         get_link_predictor,
+        get_causal_inference_engine,
         get_neo4j_store,
         get_qdrant_store,
         get_minio_store,

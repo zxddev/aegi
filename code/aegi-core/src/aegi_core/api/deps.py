@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,9 +14,14 @@ from aegi_core.infra.llm_client import LLMClient
 from aegi_core.infra.minio_store import MinioStore
 from aegi_core.infra.neo4j_store import Neo4jStore
 from aegi_core.infra.qdrant_store import QdrantStore
+from aegi_core.services.causal_inference import CausalInferenceEngine
 from aegi_core.services.link_predictor import LinkPredictor
 from aegi_core.services.tool_client import ToolClient
 from aegi_core.settings import settings
+
+if TYPE_CHECKING:
+    from aegi_core.infra.gdelt_client import GDELTClient
+    from aegi_core.infra.searxng_client import SearXNGClient
 
 
 # ── DB ──────────────────────────────────────────────────────────────
@@ -68,6 +74,11 @@ def get_link_predictor() -> LinkPredictor:
     return LinkPredictor(neo4j=get_neo4j_store())
 
 
+@lru_cache(maxsize=1)
+def get_causal_inference_engine() -> CausalInferenceEngine:
+    return CausalInferenceEngine(neo4j=get_neo4j_store())
+
+
 # ── Qdrant ──────────────────────────────────────────────────────────
 
 
@@ -93,7 +104,7 @@ def get_minio_store() -> MinioStore:
 
 
 @lru_cache(maxsize=1)
-def get_searxng_client() -> "SearXNGClient":
+def get_searxng_client() -> SearXNGClient:
     from aegi_core.infra.searxng_client import SearXNGClient
 
     return SearXNGClient(base_url=settings.searxng_base_url)
@@ -103,7 +114,7 @@ def get_searxng_client() -> "SearXNGClient":
 
 
 @lru_cache(maxsize=1)
-def get_gdelt_client() -> "GDELTClient":
+def get_gdelt_client() -> GDELTClient:
     from aegi_core.infra.gdelt_client import GDELTClient
 
     proxy = settings.gdelt_proxy if settings.gdelt_proxy else None
