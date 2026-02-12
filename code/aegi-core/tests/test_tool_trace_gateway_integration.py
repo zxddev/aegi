@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import signal
 import sys
@@ -15,9 +17,9 @@ from aegi_core.api.deps import get_tool_client
 from aegi_core.api.main import app
 from aegi_core.db.base import Base
 from aegi_core.settings import settings
-from conftest import requires_gateway, requires_postgres
+from conftest import requires_postgres
 
-pytestmark = [requires_postgres, requires_gateway]
+pytestmark = requires_postgres
 
 
 def _ensure_tables() -> None:
@@ -76,9 +78,26 @@ class _AsgiGatewayToolClient:
             return resp.json()
 
 
+class _FakeArchiveboxProc:
+    def __init__(self, stdout: bytes = b"", stderr: bytes = b"") -> None:
+        self._stdout = stdout
+        self._stderr = stderr
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return self._stdout, self._stderr
+
+
 def test_core_tool_trace_policy_from_real_gateway_response(monkeypatch) -> None:
     _ensure_tables()
     monkeypatch.setenv("AEGI_GATEWAY_ALLOW_DOMAINS", "example.com")
+
+    async def _fake_create_subprocess_exec(*args, **kwargs):
+        if "list" in args:
+            payload = json.dumps([{"url": "https://example.com/x"}]).encode()
+            return _FakeArchiveboxProc(stdout=payload)
+        return _FakeArchiveboxProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_create_subprocess_exec)
 
     gateway_app = _import_gateway_app()
     app.dependency_overrides[get_tool_client] = lambda: _AsgiGatewayToolClient(

@@ -26,6 +26,7 @@ class Settings:
     searxng_base_url: str
     unstructured_base_url: str
     archivebox_container: str
+    archivebox_timeout_s: float
 
 
 def load_settings() -> Settings:
@@ -50,6 +51,14 @@ def load_settings() -> Settings:
     if cache_ttl_s < 0:
         cache_ttl_s = 0
 
+    raw_archivebox_timeout_s = os.getenv("AEGI_GATEWAY_ARCHIVEBOX_TIMEOUT_S", "15")
+    try:
+        archivebox_timeout_s = float(raw_archivebox_timeout_s)
+    except ValueError:
+        archivebox_timeout_s = 15.0
+    if archivebox_timeout_s <= 0:
+        archivebox_timeout_s = 15.0
+
     return Settings(
         allow_domains=allow_domains,
         min_interval_ms=min_interval_ms,
@@ -58,4 +67,5 @@ def load_settings() -> Settings:
         searxng_base_url=os.getenv("AEGI_SEARXNG_BASE_URL", "http://localhost:8701"),
         unstructured_base_url=os.getenv("AEGI_UNSTRUCTURED_BASE_URL", "http://localhost:8703"),
         archivebox_container=os.getenv("AEGI_ARCHIVEBOX_CONTAINER", "archivebox"),
+        archivebox_timeout_s=archivebox_timeout_s,
     )

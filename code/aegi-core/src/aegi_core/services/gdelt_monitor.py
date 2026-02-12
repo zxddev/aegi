@@ -14,6 +14,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -148,14 +149,12 @@ class GDELTMonitor:
             seen_ids.add(gid)
 
             # DB 去重
-            existing = (
-                await _maybe_await(
-                    (
-                        await self._db.execute(
-                            select(GdeltEvent.uid).where(GdeltEvent.gdelt_id == gid)
-                        )
-                    ).scalar_one_or_none()
-                )
+            existing = await _maybe_await(
+                (
+                    await self._db.execute(
+                        select(GdeltEvent.uid).where(GdeltEvent.gdelt_id == gid)
+                    )
+                ).scalar_one_or_none()
             )
             if existing:
                 continue
@@ -209,11 +208,95 @@ class GDELTMonitor:
         return new_events
 
     async def ingest_event(self, event: GdeltEvent, case_uid: str) -> None:
-        """将 GDELT 事件标记为已 ingest 并 emit claim.extracted。
+        """将 GDELT 事件转为 Evidence + SourceClaim，并 emit claim.extracted。"""
+        from aegi_core.db.models.artifact import ArtifactIdentity, ArtifactVersion
+        from aegi_core.db.models.chunk import Chunk
+        from aegi_core.db.models.evidence import Evidence
+        from aegi_core.db.models.source_claim import SourceClaim
 
-        Phase 1 骨架：仅更新状态 + emit 事件，实际 ingest 逻辑后续补充。
-        """
         try:
+            raw_text = f"{event.title}\n{event.url}".strip()
+            content_sha = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+
+            artifact_identity_uid = uuid4().hex
+            artifact_version_uid = uuid4().hex
+            chunk_uid = uuid4().hex
+            evidence_uid = uuid4().hex
+            source_claim_uid = uuid4().hex
+
+            await _maybe_await(
+                self._db.add(
+                    ArtifactIdentity(
+                        uid=artifact_identity_uid,
+                        kind="url",
+                        canonical_url=event.url,
+                    )
+                )
+            )
+            await _maybe_await(
+                self._db.add(
+                    ArtifactVersion(
+                        uid=artifact_version_uid,
+                        artifact_identity_uid=artifact_identity_uid,
+                        case_uid=case_uid,
+                        content_sha256=content_sha,
+                        content_type="text/plain",
+                        source_meta={
+                            "source": "gdelt",
+                            "gdelt_event_uid": event.uid,
+                            "url": event.url,
+                            "title": event.title,
+                            "source_domain": event.source_domain,
+                            "language": event.language,
+                        },
+                    )
+                )
+            )
+            await _maybe_await(
+                self._db.add(
+                    Chunk(
+                        uid=chunk_uid,
+                        artifact_version_uid=artifact_version_uid,
+                        ordinal=0,
+                        text=raw_text,
+                        anchor_set=[
+                            {"type": "TextQuoteSelector", "exact": event.title},
+                            {"type": "LinkSelector", "href": event.url},
+                        ],
+                    )
+                )
+            )
+            await _maybe_await(
+                self._db.add(
+                    Evidence(
+                        uid=evidence_uid,
+                        case_uid=case_uid,
+                        artifact_version_uid=artifact_version_uid,
+                        chunk_uid=chunk_uid,
+                        kind="gdelt_article",
+                    )
+                )
+            )
+            await _maybe_await(
+                self._db.add(
+                    SourceClaim(
+                        uid=source_claim_uid,
+                        case_uid=case_uid,
+                        artifact_version_uid=artifact_version_uid,
+                        chunk_uid=chunk_uid,
+                        evidence_uid=evidence_uid,
+                        quote=event.title,
+                        selectors=[
+                            {"type": "TextQuoteSelector", "exact": event.title},
+                            {"type": "LinkSelector", "href": event.url},
+                        ],
+                        attributed_to=event.source_domain or None,
+                        modality="alleged",
+                    )
+                )
+            )
+            await _maybe_await(self._db.flush())
+
             event.case_uid = case_uid
             event.status = "ingested"
             await self._db.commit()
@@ -228,11 +311,19 @@ class GDELTMonitor:
                         "gdelt_event_uid": event.uid,
                         "title": event.title,
                         "url": event.url,
+                        "claim_count": 1,
+                        "claim_uids": [source_claim_uid],
+                        "summary": f"Extracted 1 claim from gdelt event {event.uid}",
+                        "chunk_uid": chunk_uid,
                     },
                 )
             )
         except Exception as exc:
-            logger.error("GDELT ingest 失败: %s", exc)
+            logger.exception("GDELT ingest 失败: %s", exc)
+            try:
+                await self._db.rollback()
+            except Exception:
+                logger.exception("GDELT ingest 回滚失败")
             event.status = "error"
             await self._db.commit()
             raise

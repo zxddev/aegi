@@ -94,6 +94,9 @@ class _FakeLinkPredictor:
             )
         ]
 
+    def get_last_prediction_note(self, case_uid: str) -> str | None:
+        return "实体数=220，已启用采样：仅对高连接度前 200 个实体进行预测。"
+
 
 class _UnavailablePredictor(_FakeLinkPredictor):
     async def train(self, case_uid: str, **kwargs) -> TrainResult:
@@ -123,6 +126,7 @@ def test_predictions_endpoint():
         data = resp.json()
         assert len(data["predictions"]) == 1
         assert data["predictions"][0]["relation"] == "allies_with"
+        assert "实体数=220" in data["note"]
 
 
 def test_entity_predictions_endpoint():

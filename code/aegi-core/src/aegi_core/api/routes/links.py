@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -58,7 +59,13 @@ async def predict_missing_links(
             top_k=top_k,
             min_score=min_score,
         )
-        return {"predictions": [asdict(item) for item in predictions]}
+        payload: dict[str, Any] = {"predictions": [asdict(item) for item in predictions]}
+        note_getter = getattr(predictor, "get_last_prediction_note", None)
+        if callable(note_getter):
+            note = note_getter(case_uid)
+            if note:
+                payload["note"] = note
+        return payload
     except PyKEENUnavailableError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     except ModelNotTrainedError as exc:

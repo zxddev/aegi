@@ -8,6 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from aegi_core.db.models.artifact import ArtifactIdentity, ArtifactVersion
+from aegi_core.db.models.chunk import Chunk
+from aegi_core.db.models.evidence import Evidence
+from aegi_core.db.models.source_claim import SourceClaim
 from aegi_core.infra.gdelt_client import GDELTArticle
 from aegi_core.services.gdelt_monitor import GDELTMonitor, _parse_seendate, _gdelt_id
 
@@ -257,7 +261,7 @@ async def test_poll_no_subscriptions_skips() -> None:
 
 @pytest.mark.asyncio
 async def test_ingest_event_emits_claim_extracted() -> None:
-    """ingest_event → status=ingested + emit claim.extracted。"""
+    """ingest_event → 生成 Evidence/SourceClaim + emit claim.extracted。"""
     mock_client = AsyncMock()
     mock_session = AsyncMock()
     mock_session.commit = AsyncMock()
@@ -273,7 +277,18 @@ async def test_ingest_event_emits_claim_extracted() -> None:
 
     assert ev.status == "ingested"
     assert ev.case_uid == "case_123"
+    assert mock_session.add.call_count == 5
+    added_rows = [c.args[0] for c in mock_session.add.call_args_list]
+    assert any(isinstance(row, ArtifactIdentity) for row in added_rows)
+    assert any(isinstance(row, ArtifactVersion) for row in added_rows)
+    assert any(isinstance(row, Chunk) for row in added_rows)
+    assert any(isinstance(row, Evidence) for row in added_rows)
+    assert any(isinstance(row, SourceClaim) for row in added_rows)
+    mock_session.flush.assert_called_once()
+
     mock_bus.emit.assert_called_once()
     emitted = mock_bus.emit.call_args[0][0]
     assert emitted.event_type == "claim.extracted"
     assert emitted.case_uid == "case_123"
+    assert emitted.payload["claim_count"] == 1
+    assert len(emitted.payload["claim_uids"]) == 1

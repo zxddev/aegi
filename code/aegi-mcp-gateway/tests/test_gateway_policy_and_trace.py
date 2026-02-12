@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 import pytest
@@ -101,3 +103,34 @@ def test_tool_trace_contains_required_fields(
     assert "error" in trace
     assert "policy" in trace
     assert "robots" in trace["policy"]
+
+
+def test_archive_url_timeout_returns_error_without_hanging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AEGI_GATEWAY_ALLOW_DOMAINS", "example.com")
+    monkeypatch.setenv("AEGI_GATEWAY_ARCHIVEBOX_TIMEOUT_S", "0.05")
+
+    class _SlowProc:
+        async def communicate(self) -> tuple[bytes, bytes]:
+            await asyncio.sleep(0.5)
+            return b"", b""
+
+        def kill(self) -> None:
+            return None
+
+    async def _mock_create_subprocess_exec(*args, **kwargs):
+        return _SlowProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _mock_create_subprocess_exec)
+
+    client = TestClient(app)
+    start = time.monotonic()
+    resp = client.post("/tools/archive_url", json={"url": "https://example.com/x"})
+    elapsed = time.monotonic() - start
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert "timed out" in body["error"].lower()
+    assert elapsed < 1.0

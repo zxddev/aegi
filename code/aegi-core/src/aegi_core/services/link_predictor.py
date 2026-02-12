@@ -79,6 +79,7 @@ class AnomalousTriple:
 class _CachedModel:
     pipeline_result: Any
     existing_triples: set[tuple[str, str, str]]
+    last_prediction_note: str | None = None
 
 
 def _ensure_pykeen() -> None:
@@ -171,42 +172,71 @@ class LinkPredictor:
         cached: _CachedModel,
         *,
         top_k: int,
-    ) -> list[tuple[str, str, str, float]]:
+    ) -> tuple[list[tuple[str, str, str, float]], str | None]:
         _ensure_pykeen()
-        from pykeen.predict import predict_all
+        from pykeen.predict import predict_target
 
         model = cached.pipeline_result.model
         tf = cached.pipeline_result.training
-        num_entities = len(tf.entity_to_id)
-        top_candidates = max(top_k * 50, 1000)
-        if num_entities > 500:
-            logger.warning(
-                "Large KG detected (%s entities). Restricting prediction candidates.",
-                num_entities,
-            )
-            top_candidates = max(top_candidates, 3000)
+        relation_labels = sorted(tf.relation_to_id.keys())
+        all_entities = sorted(tf.entity_to_id.keys())
+        num_entities = len(all_entities)
 
-        df = predict_all(model=model, k=top_candidates).process(factory=tf).df
-        records = sorted(
-            df.to_dict(orient="records"),
-            key=lambda row: float(row["score"]),
+        degree: dict[str, int] = {}
+        for head, _, tail in cached.existing_triples:
+            degree[head] = degree.get(head, 0) + 1
+            degree[tail] = degree.get(tail, 0) + 1
+
+        selected_entities = all_entities
+        note: str | None = None
+        if num_entities > 500:
+            selected_entities = sorted(
+                all_entities,
+                key=lambda uid: (-degree.get(uid, 0), uid),
+            )[:120]
+            note = (
+                f"实体数={num_entities}，为避免高复杂度仅对高连接度前 "
+                f"{len(selected_entities)} 个实体进行预测。"
+            )
+        elif num_entities > 200:
+            selected_entities = sorted(
+                all_entities,
+                key=lambda uid: (-degree.get(uid, 0), uid),
+            )[:200]
+            note = (
+                f"实体数={num_entities}，已启用采样：仅对高连接度前 "
+                f"{len(selected_entities)} 个实体进行预测。"
+            )
+
+        per_query_limit = max(top_k, 10)
+        best_by_triple: dict[tuple[str, str, str], float] = {}
+        for relation in relation_labels:
+            for head in selected_entities:
+                result = predict_target(
+                    model=model,
+                    head=head,
+                    relation=relation,
+                    triples_factory=tf,
+                )
+                rows = result.df.head(per_query_limit).to_dict(orient="records")
+                for row in rows:
+                    tail = str(row.get("tail_label") or row.get("tail_id") or "")
+                    if not tail:
+                        continue
+                    triple = (head, relation, tail)
+                    if triple in cached.existing_triples:
+                        continue
+                    best_by_triple[triple] = max(
+                        best_by_triple.get(triple, float("-inf")),
+                        float(row["score"]),
+                    )
+
+        sorted_rows = sorted(
+            ((*triple, score) for triple, score in best_by_triple.items()),
+            key=lambda item: item[3],
             reverse=True,
         )
-
-        predicted: list[tuple[str, str, str, float]] = []
-        for row in records:
-            head = str(row.get("head_label") or row.get("head_id") or "")
-            relation = str(row.get("relation_label") or row.get("relation_id") or "")
-            tail = str(row.get("tail_label") or row.get("tail_id") or "")
-            if not head or not relation or not tail:
-                continue
-            triple = (head, relation, tail)
-            if triple in cached.existing_triples:
-                continue
-            predicted.append((head, relation, tail, float(row["score"])))
-            if len(predicted) >= top_k * 20:
-                break
-        return predicted
+        return sorted_rows[: top_k * 20], note
 
     @staticmethod
     def _predict_for_entity_sync(
@@ -410,11 +440,12 @@ class LinkPredictor:
         _ensure_pykeen()
         cached = self._require_model(case_uid)
         entity_names = await self._neo4j.get_entity_names(case_uid)
-        raw_predictions = await self._run_blocking(
+        raw_predictions, note = await self._run_blocking(
             self._predict_missing_links_sync,
             cached,
             top_k=top_k,
         )
+        cached.last_prediction_note = note
 
         predictions: list[PredictedLink] = []
         for head, relation, tail, raw_score in raw_predictions:
@@ -435,6 +466,12 @@ class LinkPredictor:
             if len(predictions) >= top_k:
                 break
         return predictions
+
+    def get_last_prediction_note(self, case_uid: str) -> str | None:
+        cached = self._models.get(case_uid)
+        if cached is None:
+            return None
+        return cached.last_prediction_note
 
     async def predict_for_entity(
         self,

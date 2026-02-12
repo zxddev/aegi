@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import monotonic
 
 import httpx
@@ -57,6 +58,33 @@ def _trace(
             "policy": policy,
         }
     )
+
+
+async def _run_archivebox_command(
+    *,
+    container: str,
+    args: list[str],
+    timeout_s: float,
+) -> tuple[bytes, bytes]:
+    proc = await asyncio.create_subprocess_exec(
+        "docker",
+        "exec",
+        "--user=archivebox",
+        container,
+        "archivebox",
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        return await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+    except asyncio.TimeoutError as exc:
+        proc.kill()
+        try:
+            await proc.communicate()
+        except Exception:
+            pass
+        raise TimeoutError(f"ArchiveBox command timed out: {' '.join(args)}") from exc
 
 
 # ── 元搜索 ──────────────────────────────────────────────────────
@@ -158,43 +186,22 @@ async def archive_url(req: ArchiveUrlRequest) -> dict:
         },
     }
 
-    # 通过 ArchiveBox CLI 归档
-    import asyncio
+    # 通过 ArchiveBox CLI 归档（带超时保护）
     import json as _json
 
     container = settings.archivebox_container
     try:
-        # 提交归档
-        add_proc = await asyncio.create_subprocess_exec(
-            "docker",
-            "exec",
-            "--user=archivebox",
-            container,
-            "archivebox",
-            "add",
-            "--index-only",
-            req.url,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        await _run_archivebox_command(
+            container=container,
+            args=["add", "--index-only", req.url],
+            timeout_s=settings.archivebox_timeout_s,
         )
-        await add_proc.communicate()
 
-        # 查询归档结果
-        list_proc = await asyncio.create_subprocess_exec(
-            "docker",
-            "exec",
-            "--user=archivebox",
-            container,
-            "archivebox",
-            "list",
-            "--json",
-            "--filter-type",
-            "exact",
-            req.url,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        stdout, _ = await _run_archivebox_command(
+            container=container,
+            args=["list", "--json", "--filter-type", "exact", req.url],
+            timeout_s=settings.archivebox_timeout_s,
         )
-        stdout, _ = await list_proc.communicate()
         snapshots = _json.loads(stdout.decode()) if stdout.strip() else []
 
         response = {
