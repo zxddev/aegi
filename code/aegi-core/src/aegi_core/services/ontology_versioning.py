@@ -13,8 +13,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from aegi_core.contracts.audit import ActionV1, ToolTraceV1
 from aegi_core.contracts.errors import ProblemDetail
@@ -41,12 +42,142 @@ class CompatibilityReport(BaseModel):
     migration_plan: str | None = None
 
 
+def _normalize_property_names(value: list[str] | None) -> list[str]:
+    if not value:
+        return []
+    # 保持输入顺序并去重，避免同名属性重复出现。
+    return list(dict.fromkeys(v for v in value if v))
+
+
+class EntityTypeDef(BaseModel):
+    name: str
+    required_properties: list[str] = Field(default_factory=list)
+    optional_properties: list[str] = Field(default_factory=list)
+    description: str = ""
+    deprecated: bool = False
+    deprecated_by: str | None = None
+
+    @field_validator("required_properties", "optional_properties", mode="before")
+    @classmethod
+    def _normalize_props(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return []
+        return _normalize_property_names([str(v) for v in value])
+
+
+class RelationTypeDef(BaseModel):
+    name: str
+    domain: list[str] = Field(default_factory=list)
+    range: list[str] = Field(default_factory=list)
+    cardinality: str = "many-to-many"
+    properties: list[str] = Field(default_factory=list)
+    temporal: bool = False
+    description: str = ""
+    deprecated: bool = False
+
+    @field_validator("domain", "range", "properties", mode="before")
+    @classmethod
+    def _normalize_lists(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return []
+        return _normalize_property_names([str(v) for v in value])
+
+
+class EventTypeDef(BaseModel):
+    name: str
+    participant_roles: list[str] = Field(default_factory=list)
+    required_properties: list[str] = Field(default_factory=list)
+    description: str = ""
+    deprecated: bool = False
+
+    @field_validator("participant_roles", "required_properties", mode="before")
+    @classmethod
+    def _normalize_lists(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return []
+        return _normalize_property_names([str(v) for v in value])
+
+
+def _to_entity_type_def(raw: str | dict[str, Any] | EntityTypeDef) -> EntityTypeDef:
+    if isinstance(raw, EntityTypeDef):
+        return raw
+    if isinstance(raw, str):
+        return EntityTypeDef(name=raw)
+    if isinstance(raw, dict):
+        return EntityTypeDef.model_validate(raw)
+    return EntityTypeDef(name=str(raw))
+
+
+def _to_relation_type_def(
+    raw: str | dict[str, Any] | RelationTypeDef,
+) -> RelationTypeDef:
+    if isinstance(raw, RelationTypeDef):
+        return raw
+    if isinstance(raw, str):
+        return RelationTypeDef(name=raw)
+    if isinstance(raw, dict):
+        return RelationTypeDef.model_validate(raw)
+    return RelationTypeDef(name=str(raw))
+
+
+def _to_event_type_def(raw: str | dict[str, Any] | EventTypeDef) -> EventTypeDef:
+    if isinstance(raw, EventTypeDef):
+        return raw
+    if isinstance(raw, str):
+        return EventTypeDef(name=raw)
+    if isinstance(raw, dict):
+        return EventTypeDef.model_validate(raw)
+    return EventTypeDef(name=str(raw))
+
+
 class OntologyVersion(BaseModel):
     version: str
-    entity_types: list[str] = Field(default_factory=list)
-    event_types: list[str] = Field(default_factory=list)
-    relation_types: list[str] = Field(default_factory=list)
+    entity_types: list[EntityTypeDef] = Field(default_factory=list)
+    event_types: list[EventTypeDef] = Field(default_factory=list)
+    relation_types: list[RelationTypeDef] = Field(default_factory=list)
     created_at: datetime
+
+    @field_validator("entity_types", mode="before")
+    @classmethod
+    def _normalize_entity_types(cls, value: Any) -> list[EntityTypeDef]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return []
+        return [_to_entity_type_def(v) for v in value]
+
+    @field_validator("event_types", mode="before")
+    @classmethod
+    def _normalize_event_types(cls, value: Any) -> list[EventTypeDef]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return []
+        return [_to_event_type_def(v) for v in value]
+
+    @field_validator("relation_types", mode="before")
+    @classmethod
+    def _normalize_relation_types(cls, value: Any) -> list[RelationTypeDef]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return []
+        return [_to_relation_type_def(v) for v in value]
+
+    def entity_types_payload(self) -> list[dict[str, Any]]:
+        return [item.model_dump() for item in self.entity_types]
+
+    def event_types_payload(self) -> list[dict[str, Any]]:
+        return [item.model_dump() for item in self.event_types]
+
+    def relation_types_payload(self) -> list[dict[str, Any]]:
+        return [item.model_dump() for item in self.relation_types]
 
 
 _registry: dict[str, OntologyVersion] = {}
@@ -144,17 +275,17 @@ async def register_version_db(
         pg_insert(OntologyVersionRow)
         .values(
             version=version.version,
-            entity_types=version.entity_types,
-            event_types=version.event_types,
-            relation_types=version.relation_types,
+            entity_types=version.entity_types_payload(),
+            event_types=version.event_types_payload(),
+            relation_types=version.relation_types_payload(),
             created_at=version.created_at,
         )
         .on_conflict_do_update(
             index_elements=["version"],
             set_={
-                "entity_types": version.entity_types,
-                "event_types": version.event_types,
-                "relation_types": version.relation_types,
+                "entity_types": version.entity_types_payload(),
+                "event_types": version.event_types_payload(),
+                "relation_types": version.relation_types_payload(),
             },
         )
     )
@@ -206,14 +337,13 @@ async def load_from_db(session: "AsyncSession") -> None:  # noqa: F821
         _case_pins[p.case_uid] = p.ontology_version
 
 
-def _compare_type_lists(
-    old: list[str],
-    new: list[str],
+def _compare_name_sets(
+    old_names: set[str],
+    new_names: set[str],
     field: str,
 ) -> list[OntologyChange]:
     changes: list[OntologyChange] = []
-    old_set, new_set = set(old), set(new)
-    for removed in sorted(old_set - new_set):
+    for removed in sorted(old_names - new_names):
         changes.append(
             OntologyChange(
                 field=field,
@@ -221,7 +351,7 @@ def _compare_type_lists(
                 level=ChangeLevel.BREAKING,
             )
         )
-    for added in sorted(new_set - old_set):
+    for added in sorted(new_names - old_names):
         changes.append(
             OntologyChange(
                 field=field,
@@ -229,6 +359,268 @@ def _compare_type_lists(
                 level=ChangeLevel.COMPATIBLE,
             )
         )
+    return changes
+
+
+def _as_name_map(items: list[BaseModel]) -> dict[str, BaseModel]:
+    return {
+        str(getattr(item, "name")): item for item in items if getattr(item, "name", "")
+    }
+
+
+def _compare_property_sets(
+    *,
+    field: str,
+    name: str,
+    old_values: list[str],
+    new_values: list[str],
+    removed_level: ChangeLevel,
+    added_level: ChangeLevel,
+    label: str,
+) -> list[OntologyChange]:
+    changes: list[OntologyChange] = []
+    old_set = set(old_values)
+    new_set = set(new_values)
+    for removed in sorted(old_set - new_set):
+        changes.append(
+            OntologyChange(
+                field=f"{field}.{name}.{label}",
+                description=f"Removed {label}: {removed}",
+                level=removed_level,
+            )
+        )
+    for added in sorted(new_set - old_set):
+        changes.append(
+            OntologyChange(
+                field=f"{field}.{name}.{label}",
+                description=f"Added {label}: {added}",
+                level=added_level,
+            )
+        )
+    return changes
+
+
+def _compare_entity_defs(
+    old: EntityTypeDef, new: EntityTypeDef
+) -> list[OntologyChange]:
+    changes: list[OntologyChange] = []
+    name = old.name
+    changes.extend(
+        _compare_property_sets(
+            field="entity_types",
+            name=name,
+            old_values=old.required_properties,
+            new_values=new.required_properties,
+            removed_level=ChangeLevel.COMPATIBLE,
+            added_level=ChangeLevel.BREAKING,
+            label="required_properties",
+        )
+    )
+    changes.extend(
+        _compare_property_sets(
+            field="entity_types",
+            name=name,
+            old_values=old.optional_properties,
+            new_values=new.optional_properties,
+            removed_level=ChangeLevel.DEPRECATED,
+            added_level=ChangeLevel.COMPATIBLE,
+            label="optional_properties",
+        )
+    )
+    if not old.deprecated and new.deprecated:
+        changes.append(
+            OntologyChange(
+                field=f"entity_types.{name}.deprecated",
+                description=f"Deprecated: {name}",
+                level=ChangeLevel.DEPRECATED,
+            )
+        )
+    if old.deprecated_by != new.deprecated_by and new.deprecated_by:
+        changes.append(
+            OntologyChange(
+                field=f"entity_types.{name}.deprecated_by",
+                description=f"{name} deprecated by {new.deprecated_by}",
+                level=ChangeLevel.DEPRECATED,
+            )
+        )
+    return changes
+
+
+def _compare_event_defs(old: EventTypeDef, new: EventTypeDef) -> list[OntologyChange]:
+    changes: list[OntologyChange] = []
+    name = old.name
+    changes.extend(
+        _compare_property_sets(
+            field="event_types",
+            name=name,
+            old_values=old.participant_roles,
+            new_values=new.participant_roles,
+            removed_level=ChangeLevel.BREAKING,
+            added_level=ChangeLevel.COMPATIBLE,
+            label="participant_roles",
+        )
+    )
+    changes.extend(
+        _compare_property_sets(
+            field="event_types",
+            name=name,
+            old_values=old.required_properties,
+            new_values=new.required_properties,
+            removed_level=ChangeLevel.COMPATIBLE,
+            added_level=ChangeLevel.BREAKING,
+            label="required_properties",
+        )
+    )
+    if not old.deprecated and new.deprecated:
+        changes.append(
+            OntologyChange(
+                field=f"event_types.{name}.deprecated",
+                description=f"Deprecated: {name}",
+                level=ChangeLevel.DEPRECATED,
+            )
+        )
+    return changes
+
+
+def _compare_constraint_scope(
+    *,
+    field: str,
+    relation_name: str,
+    old_values: list[str],
+    new_values: list[str],
+) -> list[OntologyChange]:
+    changes: list[OntologyChange] = []
+    old_set = set(old_values)
+    new_set = set(new_values)
+
+    if not old_set and new_set:
+        changes.append(
+            OntologyChange(
+                field=f"relation_types.{relation_name}.{field}",
+                description=f"Introduced {field} restriction: {sorted(new_set)}",
+                level=ChangeLevel.BREAKING,
+            )
+        )
+        return changes
+    if old_set and not new_set:
+        changes.append(
+            OntologyChange(
+                field=f"relation_types.{relation_name}.{field}",
+                description=f"Removed {field} restriction (now unconstrained)",
+                level=ChangeLevel.COMPATIBLE,
+            )
+        )
+        return changes
+
+    for removed in sorted(old_set - new_set):
+        changes.append(
+            OntologyChange(
+                field=f"relation_types.{relation_name}.{field}",
+                description=f"Removed allowed {field} type: {removed}",
+                level=ChangeLevel.BREAKING,
+            )
+        )
+    for added in sorted(new_set - old_set):
+        changes.append(
+            OntologyChange(
+                field=f"relation_types.{relation_name}.{field}",
+                description=f"Added allowed {field} type: {added}",
+                level=ChangeLevel.COMPATIBLE,
+            )
+        )
+    return changes
+
+
+def _compare_relation_defs(
+    old: RelationTypeDef, new: RelationTypeDef
+) -> list[OntologyChange]:
+    changes: list[OntologyChange] = []
+    name = old.name
+    changes.extend(
+        _compare_constraint_scope(
+            field="domain",
+            relation_name=name,
+            old_values=old.domain,
+            new_values=new.domain,
+        )
+    )
+    changes.extend(
+        _compare_constraint_scope(
+            field="range",
+            relation_name=name,
+            old_values=old.range,
+            new_values=new.range,
+        )
+    )
+    if old.cardinality != new.cardinality:
+        changes.append(
+            OntologyChange(
+                field=f"relation_types.{name}.cardinality",
+                description=f"Cardinality changed: {old.cardinality} -> {new.cardinality}",
+                level=ChangeLevel.BREAKING,
+            )
+        )
+    changes.extend(
+        _compare_property_sets(
+            field="relation_types",
+            name=name,
+            old_values=old.properties,
+            new_values=new.properties,
+            removed_level=ChangeLevel.BREAKING,
+            added_level=ChangeLevel.COMPATIBLE,
+            label="properties",
+        )
+    )
+    if old.temporal and not new.temporal:
+        changes.append(
+            OntologyChange(
+                field=f"relation_types.{name}.temporal",
+                description=f"Temporal support removed for {name}",
+                level=ChangeLevel.BREAKING,
+            )
+        )
+    elif not old.temporal and new.temporal:
+        changes.append(
+            OntologyChange(
+                field=f"relation_types.{name}.temporal",
+                description=f"Temporal support added for {name}",
+                level=ChangeLevel.COMPATIBLE,
+            )
+        )
+    if not old.deprecated and new.deprecated:
+        changes.append(
+            OntologyChange(
+                field=f"relation_types.{name}.deprecated",
+                description=f"Deprecated: {name}",
+                level=ChangeLevel.DEPRECATED,
+            )
+        )
+    return changes
+
+
+def _compare_typed_defs(
+    old_items: list[BaseModel],
+    new_items: list[BaseModel],
+    field: str,
+) -> list[OntologyChange]:
+    changes: list[OntologyChange] = []
+    old_map = _as_name_map(old_items)
+    new_map = _as_name_map(new_items)
+    old_names = set(old_map)
+    new_names = set(new_map)
+    changes.extend(_compare_name_sets(old_names, new_names, field))
+
+    for name in sorted(old_names & new_names):
+        old_item = old_map[name]
+        new_item = new_map[name]
+        if isinstance(old_item, EntityTypeDef) and isinstance(new_item, EntityTypeDef):
+            changes.extend(_compare_entity_defs(old_item, new_item))
+        elif isinstance(old_item, EventTypeDef) and isinstance(new_item, EventTypeDef):
+            changes.extend(_compare_event_defs(old_item, new_item))
+        elif isinstance(old_item, RelationTypeDef) and isinstance(
+            new_item, RelationTypeDef
+        ):
+            changes.extend(_compare_relation_defs(old_item, new_item))
     return changes
 
 
@@ -258,11 +650,11 @@ def _compute_compatibility_from_versions(
 
     changes: list[OntologyChange] = []
     changes.extend(
-        _compare_type_lists(old.entity_types, new.entity_types, "entity_types")
+        _compare_typed_defs(old.entity_types, new.entity_types, "entity_types")
     )
-    changes.extend(_compare_type_lists(old.event_types, new.event_types, "event_types"))
+    changes.extend(_compare_typed_defs(old.event_types, new.event_types, "event_types"))
     changes.extend(
-        _compare_type_lists(old.relation_types, new.relation_types, "relation_types")
+        _compare_typed_defs(old.relation_types, new.relation_types, "relation_types")
     )
 
     if not changes:
@@ -310,6 +702,138 @@ async def compute_compatibility_db(
     old = await get_version_db(from_ver, session)
     new = await get_version_db(to_ver, session)
     return _compute_compatibility_from_versions(old, new, from_ver, to_ver)
+
+
+def _to_mapping(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        return payload
+    if hasattr(payload, "model_dump"):
+        dumped = payload.model_dump()
+        if isinstance(dumped, dict):
+            return dumped
+    return {}
+
+
+def _ontology_validation_error(
+    *,
+    error_code: str,
+    detail: str,
+    extensions: dict[str, Any] | None = None,
+) -> ProblemDetail:
+    return ProblemDetail(
+        type=f"urn:aegi:error:{error_code}",
+        title="Ontology validation failed",
+        status=422,
+        detail=detail,
+        error_code=error_code,
+        extensions=extensions or {},
+    )
+
+
+def validate_against_ontology(
+    candidate: Any,
+    ontology_version: OntologyVersion,
+    *,
+    source_entity: Any | None = None,
+    target_entity: Any | None = None,
+) -> ProblemDetail | None:
+    """校验 entity/relation 是否符合本体合同约束。
+
+    Args:
+        candidate: 待写入对象（EntityV1/RelationV1 或 dict）。
+        ontology_version: 目标本体版本对象。
+        source_entity: relation 校验时可选的源实体对象。
+        target_entity: relation 校验时可选的目标实体对象。
+
+    Returns:
+        不符合约束时返回 ProblemDetail；合法时返回 None。
+    """
+    payload = _to_mapping(candidate)
+    if not payload:
+        return _ontology_validation_error(
+            error_code="ontology_validation_failed",
+            detail="Candidate payload is empty",
+        )
+
+    entity_type = payload.get("entity_type")
+    relation_type = payload.get("relation_type")
+    entity_defs = {item.name: item for item in ontology_version.entity_types}
+    relation_defs = {item.name: item for item in ontology_version.relation_types}
+
+    if entity_type:
+        type_def = entity_defs.get(str(entity_type))
+        if type_def is None:
+            return _ontology_validation_error(
+                error_code="ontology_entity_type_not_allowed",
+                detail=f"Entity type '{entity_type}' is not allowed in {ontology_version.version}",
+                extensions={"entity_type": entity_type},
+            )
+        properties = payload.get("properties") or {}
+        if not isinstance(properties, dict):
+            properties = {}
+        missing = sorted(set(type_def.required_properties) - set(properties.keys()))
+        if missing:
+            return _ontology_validation_error(
+                error_code="ontology_entity_missing_properties",
+                detail=(
+                    f"Entity type '{entity_type}' missing required properties: {', '.join(missing)}"
+                ),
+                extensions={"missing_properties": missing},
+            )
+        return None
+
+    if relation_type:
+        type_def = relation_defs.get(str(relation_type))
+        if type_def is None:
+            return _ontology_validation_error(
+                error_code="ontology_relation_type_not_allowed",
+                detail=(
+                    f"Relation type '{relation_type}' is not allowed in "
+                    f"{ontology_version.version}"
+                ),
+                extensions={"relation_type": relation_type},
+            )
+        properties = payload.get("properties") or {}
+        if not isinstance(properties, dict):
+            properties = {}
+        missing = sorted(set(type_def.properties) - set(properties.keys()))
+        if missing:
+            return _ontology_validation_error(
+                error_code="ontology_relation_missing_properties",
+                detail=(
+                    f"Relation type '{relation_type}' missing required properties: "
+                    f"{', '.join(missing)}"
+                ),
+                extensions={"missing_properties": missing},
+            )
+
+        source_type = _to_mapping(source_entity).get("entity_type")
+        if type_def.domain and source_type and source_type not in set(type_def.domain):
+            return _ontology_validation_error(
+                error_code="ontology_relation_domain_violation",
+                detail=(
+                    f"Relation '{relation_type}' source entity_type '{source_type}' not in "
+                    f"domain {type_def.domain}"
+                ),
+                extensions={"source_type": source_type, "domain": type_def.domain},
+            )
+
+        target_type = _to_mapping(target_entity).get("entity_type")
+        if type_def.range and target_type and target_type not in set(type_def.range):
+            return _ontology_validation_error(
+                error_code="ontology_relation_range_violation",
+                detail=(
+                    f"Relation '{relation_type}' target entity_type '{target_type}' not in "
+                    f"range {type_def.range}"
+                ),
+                extensions={"target_type": target_type, "range": type_def.range},
+            )
+        return None
+
+    return _ontology_validation_error(
+        error_code="ontology_candidate_shape_invalid",
+        detail="Candidate must contain either entity_type or relation_type",
+    )
 
 
 def upgrade_ontology(

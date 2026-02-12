@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aegi_core.api.deps import get_db_session, get_gdelt_client
 from aegi_core.api.errors import AegiHTTPError
 from aegi_core.db.models.gdelt_event import GdeltEvent
+from aegi_core.infra.cameo import CAMEO_CATEGORY, cameo_category, cameo_root_label
 from aegi_core.services.gdelt_scheduler import GDELTScheduler
 
 router = APIRouter(prefix="/gdelt", tags=["gdelt"])
@@ -29,9 +30,14 @@ class GdeltEventResponse(BaseModel):
     language: str = ""
     published_at: str | None = None
     cameo_code: str | None = None
+    cameo_root: str | None = None
+    cameo_label: str = ""
+    cameo_category: str = "unknown"
     goldstein_scale: float | None = None
     actor1: str | None = None
     actor2: str | None = None
+    actor1_country: str | None = None
+    actor2_country: str | None = None
     geo_country: str | None = None
     geo_name: str | None = None
     tone: float | None = None
@@ -69,12 +75,16 @@ class GdeltStatsResponse(BaseModel):
     by_status: dict[str, int] = Field(default_factory=dict)
     top_countries: list[dict] = Field(default_factory=list)
     by_day: list[dict] = Field(default_factory=list)
+    cameo_distribution: dict[str, int] = Field(default_factory=dict)
+    conflict_cooperation_ratio: float = 0.0
+    anomaly_count: int = 0
 
 
 # ── 辅助 ──────────────────────────────────────────────────────
 
 
 def _event_to_response(ev: GdeltEvent) -> GdeltEventResponse:
+    root = ev.cameo_root or ""
     return GdeltEventResponse(
         uid=ev.uid,
         gdelt_id=ev.gdelt_id,
@@ -85,9 +95,14 @@ def _event_to_response(ev: GdeltEvent) -> GdeltEventResponse:
         language=ev.language,
         published_at=ev.published_at.isoformat() if ev.published_at else None,
         cameo_code=ev.cameo_code,
+        cameo_root=ev.cameo_root,
+        cameo_label=cameo_root_label(root) if root else "",
+        cameo_category=cameo_category(root) if root else "unknown",
         goldstein_scale=ev.goldstein_scale,
         actor1=ev.actor1,
         actor2=ev.actor2,
+        actor1_country=ev.actor1_country,
+        actor2_country=ev.actor2_country,
         geo_country=ev.geo_country,
         geo_name=ev.geo_name,
         tone=ev.tone,
@@ -139,7 +154,9 @@ async def manual_poll(
 
     gdelt = get_gdelt_client()
     monitor = GDELTMonitor(gdelt=gdelt, db_session=session)
-    new_events = await monitor.poll()
+    doc_events = await monitor.poll()
+    csv_events = await monitor.poll_events()
+    new_events = [*doc_events, *csv_events]
     return PollResponse(
         new_events=len(new_events),
         events=[_event_to_response(ev) for ev in new_events],
@@ -176,6 +193,10 @@ async def list_events(
     limit: int = 20,
     status: str | None = None,
     geo_country: str | None = None,
+    cameo_root: str | None = None,
+    min_goldstein: float | None = None,
+    max_goldstein: float | None = None,
+    actor_country: str | None = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> PaginatedGdeltEvents:
     """分页查询 GDELT 事件。"""
@@ -185,6 +206,20 @@ async def list_events(
         filters.append(GdeltEvent.status == status)
     if geo_country:
         filters.append(GdeltEvent.geo_country == geo_country)
+    if cameo_root:
+        filters.append(GdeltEvent.cameo_root == cameo_root)
+    if min_goldstein is not None:
+        filters.append(GdeltEvent.goldstein_scale >= min_goldstein)
+    if max_goldstein is not None:
+        filters.append(GdeltEvent.goldstein_scale <= max_goldstein)
+    if actor_country:
+        country = actor_country.upper()
+        filters.append(
+            sa.or_(
+                GdeltEvent.actor1_country == country,
+                GdeltEvent.actor2_country == country,
+            )
+        )
 
     total_q = sa.select(sa.func.count()).select_from(GdeltEvent)
     if filters:
@@ -219,6 +254,43 @@ async def get_event_detail(
     if not ev:
         raise AegiHTTPError(404, "not_found", f"GDELT event {uid} not found", {})
     return _event_to_response(ev)
+
+
+@router.get("/anomalies", response_model=PaginatedGdeltEvents)
+async def list_anomalies(
+    skip: int = 0,
+    offset: int | None = None,
+    limit: int = 20,
+    session: AsyncSession = Depends(get_db_session),
+) -> PaginatedGdeltEvents:
+    """分页查询异常事件（status=anomaly）。"""
+    query_offset = skip if offset is None else offset
+    filters = [GdeltEvent.status == "anomaly"]
+
+    total = (
+        await session.execute(
+            sa.select(sa.func.count()).select_from(GdeltEvent).where(*filters)
+        )
+    ).scalar() or 0
+
+    rows = (
+        (
+            await session.execute(
+                sa.select(GdeltEvent)
+                .where(*filters)
+                .order_by(GdeltEvent.created_at.desc())
+                .offset(query_offset)
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    return PaginatedGdeltEvents(
+        items=[_event_to_response(r) for r in rows],
+        total=total,
+    )
 
 
 @router.post("/events/{uid}/ingest")
@@ -292,9 +364,52 @@ async def stats(
         for r in day_rows
     ]
 
+    cameo_rows = (
+        await session.execute(
+            sa.select(GdeltEvent.cameo_root, sa.func.count())
+            .where(GdeltEvent.cameo_root.isnot(None))
+            .group_by(GdeltEvent.cameo_root)
+        )
+    ).all()
+    cameo_distribution = {str(row[0]): row[1] for row in cameo_rows if row[0]}
+
+    conflict_roots = [code for code, cat in CAMEO_CATEGORY.items() if cat == "conflict"]
+    cooperation_roots = [
+        code for code, cat in CAMEO_CATEGORY.items() if cat == "cooperation"
+    ]
+
+    conflict_count = (
+        await session.execute(
+            sa.select(sa.func.count())
+            .select_from(GdeltEvent)
+            .where(GdeltEvent.cameo_root.in_(conflict_roots))
+        )
+    ).scalar() or 0
+    cooperation_count = (
+        await session.execute(
+            sa.select(sa.func.count())
+            .select_from(GdeltEvent)
+            .where(GdeltEvent.cameo_root.in_(cooperation_roots))
+        )
+    ).scalar() or 0
+
+    conflict_cooperation_ratio = (
+        conflict_count / cooperation_count if cooperation_count > 0 else 0.0
+    )
+    anomaly_count = (
+        await session.execute(
+            sa.select(sa.func.count())
+            .select_from(GdeltEvent)
+            .where(GdeltEvent.status == "anomaly")
+        )
+    ).scalar() or 0
+
     return GdeltStatsResponse(
         total=total,
         by_status=by_status,
         top_countries=top_countries,
         by_day=by_day,
+        cameo_distribution=cameo_distribution,
+        conflict_cooperation_ratio=conflict_cooperation_ratio,
+        anomaly_count=anomaly_count,
     )

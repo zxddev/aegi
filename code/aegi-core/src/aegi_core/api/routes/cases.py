@@ -8,8 +8,10 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aegi_core.api.deps import get_db_session, get_tool_client
+from aegi_core.contracts.schemas import CaseFeedbackStats
 from aegi_core.services import (
     case_service,
+    feedback_service,
     fixture_import_service,
     tool_archive_service,
     tool_parse_service,
@@ -73,6 +75,15 @@ async def get_case(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict:
     return await case_service.get_case(session, case_uid=case_uid)
+
+
+@router.get("/{case_uid}/feedback/stats", response_model=CaseFeedbackStats)
+async def get_case_feedback_stats(
+    case_uid: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> CaseFeedbackStats:
+    stats = await feedback_service.get_case_feedback_stats(session, case_uid)
+    return CaseFeedbackStats.model_validate(stats)
 
 
 @router.get("/{case_uid}/artifacts")

@@ -12,19 +12,40 @@ import hashlib
 import inspect
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aegi_core.db.models.gdelt_event import GdeltEvent
 from aegi_core.db.models.subscription import Subscription
-from aegi_core.infra.gdelt_client import GDELTArticle, GDELTClient
+from aegi_core.infra.cameo import cameo_root_label, is_high_conflict
+from aegi_core.infra.gdelt_client import GDELTArticle, GDELTClient, GDELTEvent
 from aegi_core.services.event_bus import AegiEvent, get_event_bus
 
 logger = logging.getLogger(__name__)
+
+_COUNTRY_NAME_TO_CODE: dict[str, str] = {
+    "IRAN": "IR",
+    "ISLAMIC REPUBLIC OF IRAN": "IR",
+    "UNITED STATES": "US",
+    "UNITED STATES OF AMERICA": "US",
+    "UNITED KINGDOM": "GB",
+    "GREAT BRITAIN": "GB",
+    "CHINA": "CN",
+    "RUSSIA": "RU",
+    "RUSSIAN FEDERATION": "RU",
+    "ISRAEL": "IL",
+    "UKRAINE": "UA",
+    "TURKEY": "TR",
+    "SYRIA": "SY",
+    "IRAQ": "IQ",
+    "LEBANON": "LB",
+}
 
 
 def _parse_seendate(s: str) -> datetime | None:
@@ -48,11 +69,48 @@ def _gdelt_id(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()[:32]
 
 
+def _parse_date_added(s: str) -> datetime | None:
+    """解析 GDELT DATEADDED，例如 20260212114500。"""
+    text = (s or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y%m%d%H%M%S", "%Y%m%d"):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _source_domain(url: str) -> str:
+    """从 URL 提取域名。"""
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    return parsed.netloc.lower()
+
+
 def _split_interest(text: str | None) -> list[str]:
     """将 interest_text 按逗号/空格分割为关键词列表。"""
     if not text:
         return []
     return [w.strip() for w in re.split(r"[,\s]+", text) if w.strip()]
+
+
+def _normalize_country(value: str | None) -> str:
+    """国家字段标准化，兼容 ISO 代码与国家全名。"""
+    text = (value or "").strip()
+    if not text:
+        return ""
+    upper = text.upper()
+    mapped = _COUNTRY_NAME_TO_CODE.get(upper)
+    if mapped:
+        return mapped
+    if len(upper) <= 3 and upper.isalpha():
+        return upper
+    if len(upper) <= 8:
+        return upper
+    return upper[:8]
 
 
 def _extract_match_rule_list(
@@ -97,6 +155,16 @@ class GDELTMonitor:
         async with AsyncSession(ENGINE, expire_on_commit=False) as session:
             return await self._poll_once(session)
 
+    async def poll_events(self) -> list[GdeltEvent]:
+        """轮询 GDELT Events CSV，写入结构化事件并触发异常检测。"""
+        if self._db is not None:
+            return await self._poll_events_once(self._db)
+
+        from aegi_core.db.session import ENGINE
+
+        async with AsyncSession(ENGINE, expire_on_commit=False) as session:
+            return await self._poll_events_once(session)
+
     def _require_db_session(self) -> AsyncSession:
         if self._db is None:
             raise RuntimeError("GDELTMonitor requires a bound db session")
@@ -139,6 +207,7 @@ class GDELTMonitor:
         for kw in keywords:
             articles = await self._gdelt.search_articles(
                 kw,
+                timespan=settings.gdelt_doc_timespan,
                 max_records=settings.gdelt_max_articles_per_query,
             )
             all_articles.extend(articles)
@@ -148,8 +217,9 @@ class GDELTMonitor:
         # 按国家搜索（用通配关键词 + sourcecountry 过滤）
         for country in countries:
             articles = await self._gdelt.search_articles(
-                "*",
+                "",
                 source_country=country,
+                timespan=settings.gdelt_doc_timespan,
                 max_records=settings.gdelt_max_articles_per_query,
             )
             all_articles.extend(articles)
@@ -181,8 +251,6 @@ class GDELTMonitor:
             matched_uids = self._match_subscriptions(article, subs)
             published = _parse_seendate(article.seendate)
 
-            from uuid import uuid4
-
             event = GdeltEvent(
                 uid=uuid4().hex,
                 gdelt_id=gid,
@@ -192,7 +260,7 @@ class GDELTMonitor:
                 language=article.language,
                 published_at=published,
                 tone=article.tone if article.tone else None,
-                geo_country=article.domain_country or None,
+                geo_country=_normalize_country(article.domain_country) or None,
                 status="new",
                 matched_subscription_uids=matched_uids,
                 raw_data={
@@ -205,26 +273,301 @@ class GDELTMonitor:
 
         if new_events:
             await db.commit()
-            # emit 事件
-            bus = get_event_bus()
-            for ev in new_events:
-                await bus.emit(
-                    AegiEvent(
-                        event_type="gdelt.event_detected",
-                        case_uid=ev.case_uid or "",
-                        payload={
-                            "gdelt_event_uid": ev.uid,
-                            "title": ev.title,
-                            "url": ev.url,
-                            "source_domain": ev.source_domain,
-                            "tone": ev.tone,
-                        },
-                        regions=[ev.geo_country] if ev.geo_country else [],
-                    )
-                )
+            await self._emit_detected_events(new_events)
 
         logger.info("GDELT poll: 发现 %d 篇新文章", len(new_events))
         return new_events
+
+    async def _poll_events_once(self, db: AsyncSession) -> list[GdeltEvent]:
+        """执行一次 Events CSV 轮询。"""
+        subs = await self._load_subscriptions(db)
+        if not subs:
+            logger.info("GDELT Events poll: 无匹配订阅，跳过")
+            return []
+
+        countries: set[str] = set()
+        cameo_roots: set[str] = set()
+        for sub in subs:
+            countries.update(
+                {
+                    c.upper()
+                    for c in _extract_match_rule_list(sub, "countries")
+                    if c.strip()
+                }
+            )
+            cameo_roots.update(
+                {c for c in _extract_match_rule_list(sub, "cameo_roots") if c.strip()}
+            )
+            if sub.sub_type == "region":
+                target = (sub.sub_target or "").upper()
+                if target and target != "*":
+                    countries.add(target)
+
+        from aegi_core.settings import settings
+
+        raw_events = await self._gdelt.fetch_latest_events(
+            max_events=settings.gdelt_max_events_per_poll,
+            country_filter=countries or None,
+            cameo_root_filter=cameo_roots or None,
+        )
+        if not raw_events:
+            logger.info("GDELT Events poll: 本轮无事件")
+            return []
+
+        new_events: list[GdeltEvent] = []
+        seen_ids: set[str] = set()
+        for raw_event in raw_events:
+            gid = (raw_event.global_event_id or "").strip()
+            if not gid or gid in seen_ids:
+                continue
+            seen_ids.add(gid)
+
+            existing = await _maybe_await(
+                (
+                    await db.execute(
+                        select(GdeltEvent.uid).where(GdeltEvent.gdelt_id == gid)
+                    )
+                ).scalar_one_or_none()
+            )
+            if existing:
+                continue
+
+            matched_uids = self._match_subscriptions_event(raw_event, subs)
+            if not matched_uids:
+                continue
+
+            published = _parse_date_added(raw_event.date_added)
+            event = GdeltEvent(
+                uid=uuid4().hex,
+                gdelt_id=gid,
+                title=self._event_title(raw_event),
+                url=raw_event.source_url or "",
+                source_domain=_source_domain(raw_event.source_url),
+                language="",
+                published_at=published,
+                cameo_code=raw_event.event_code or None,
+                cameo_root=raw_event.event_root_code or None,
+                goldstein_scale=raw_event.goldstein_scale,
+                actor1=raw_event.actor1_name or None,
+                actor2=raw_event.actor2_name or None,
+                actor1_country=raw_event.actor1_country or None,
+                actor2_country=raw_event.actor2_country or None,
+                geo_lat=raw_event.geo_lat,
+                geo_lon=raw_event.geo_lon,
+                geo_country=raw_event.geo_country or None,
+                geo_name=raw_event.geo_name or None,
+                tone=raw_event.avg_tone,
+                status="new",
+                matched_subscription_uids=matched_uids,
+                raw_data={
+                    "event_code": raw_event.event_code,
+                    "event_base_code": raw_event.event_base_code,
+                    "event_root_code": raw_event.event_root_code,
+                    "date_added": raw_event.date_added,
+                },
+            )
+            await _maybe_await(db.add(event))
+            new_events.append(event)
+
+        if not new_events:
+            logger.info("GDELT Events poll: 过滤后无新增事件")
+            return []
+
+        await db.commit()
+        await self._emit_detected_events(new_events)
+        await self.detect_anomalies(new_events, db=db)
+
+        logger.info("GDELT Events poll: 发现 %d 条新事件", len(new_events))
+        return new_events
+
+    async def _emit_detected_events(self, events: list[GdeltEvent]) -> None:
+        """统一 emit gdelt.event_detected。"""
+        bus = get_event_bus()
+        for ev in events:
+            await bus.emit(
+                AegiEvent(
+                    event_type="gdelt.event_detected",
+                    case_uid=ev.case_uid,
+                    payload={
+                        "gdelt_event_uid": ev.uid,
+                        "title": ev.title,
+                        "url": ev.url,
+                        "source_domain": ev.source_domain,
+                        "tone": ev.tone,
+                        "cameo_code": ev.cameo_code,
+                        "cameo_root": ev.cameo_root,
+                        "goldstein_scale": ev.goldstein_scale,
+                    },
+                    regions=[ev.geo_country] if ev.geo_country else [],
+                )
+            )
+
+    def _event_title(self, event: GDELTEvent) -> str:
+        """为 Events CSV 事件生成可读标题。"""
+        if event.actor1_name or event.actor2_name:
+            left = event.actor1_name or event.actor1_code or "Unknown"
+            right = event.actor2_name or event.actor2_code or "Unknown"
+            return f"{left} → {right}"
+        if event.event_code:
+            return f"GDELT Event {event.event_code}"
+        return f"GDELT Event {event.global_event_id}"
+
+    def _match_subscriptions_event(
+        self,
+        event: GDELTEvent,
+        subs: list[Subscription],
+    ) -> list[str]:
+        """判断 Events CSV 事件匹配哪些订阅。"""
+        matched: list[str] = []
+        event_countries = {
+            (event.actor1_country or "").upper(),
+            (event.actor2_country or "").upper(),
+            (event.geo_country or "").upper(),
+        }
+
+        for sub in subs:
+            if sub.sub_type == "global":
+                if sub.uid not in matched:
+                    matched.append(sub.uid)
+                continue
+
+            countries = {c.upper() for c in _extract_match_rule_list(sub, "countries")}
+            cameo_roots = set(_extract_match_rule_list(sub, "cameo_roots"))
+
+            if sub.sub_type == "region":
+                target = (sub.sub_target or "").upper()
+                if target and target != "*":
+                    countries.add(target)
+
+            country_hit = bool(countries.intersection(event_countries))
+            cameo_hit = bool(
+                event.event_root_code and event.event_root_code in cameo_roots
+            )
+
+            # Events CSV 不包含可检索正文，keywords 暂不支持。
+            if country_hit or cameo_hit:
+                if sub.uid not in matched:
+                    matched.append(sub.uid)
+
+        return matched
+
+    async def _is_event_surge(self, db: AsyncSession, geo_country: str) -> bool:
+        """判断某地区事件是否突增。"""
+        from aegi_core.settings import settings
+
+        now = datetime.now(timezone.utc)
+        recent_since = now - timedelta(hours=24)
+        history_since = now - timedelta(days=7)
+
+        recent_count = (
+            await db.execute(
+                sa.select(sa.func.count())
+                .select_from(GdeltEvent)
+                .where(
+                    GdeltEvent.geo_country == geo_country,
+                    GdeltEvent.created_at >= recent_since,
+                )
+            )
+        ).scalar() or 0
+
+        history_count = (
+            await db.execute(
+                sa.select(sa.func.count())
+                .select_from(GdeltEvent)
+                .where(
+                    GdeltEvent.geo_country == geo_country,
+                    GdeltEvent.created_at >= history_since,
+                    GdeltEvent.created_at < recent_since,
+                )
+            )
+        ).scalar() or 0
+
+        daily_avg = history_count / 7.0
+        if daily_avg <= 0:
+            return False
+        multiplier = max(settings.gdelt_anomaly_event_surge_multiplier, 1.0)
+        return recent_count > daily_avg * multiplier
+
+    async def _emit_anomaly_event(self, event: GdeltEvent, anomaly_type: str) -> None:
+        """发送 gdelt.anomaly_detected 事件。"""
+        bus = get_event_bus()
+        title = event.title or f"{event.actor1 or ''} → {event.actor2 or ''}".strip()
+        if not title:
+            title = f"GDELT Event {event.gdelt_id}"
+
+        await bus.emit(
+            AegiEvent(
+                event_type="gdelt.anomaly_detected",
+                case_uid=event.case_uid,
+                severity="high",
+                payload={
+                    "anomaly_type": anomaly_type,
+                    "title": title,
+                    "goldstein_scale": event.goldstein_scale,
+                    "cameo_code": event.cameo_code,
+                    "cameo_label": cameo_root_label(event.cameo_root or ""),
+                    "geo_country": event.geo_country,
+                    "source_url": event.url,
+                },
+                regions=[event.geo_country] if event.geo_country else [],
+            )
+        )
+
+    async def detect_anomalies(
+        self,
+        events: list[GdeltEvent],
+        *,
+        db: AsyncSession | None = None,
+    ) -> list[GdeltEvent]:
+        """检测异常事件并 emit 高优先级告警。"""
+        if not events:
+            return []
+
+        from aegi_core.settings import settings
+
+        session = db or self._require_db_session()
+        anomalies: list[GdeltEvent] = []
+        status_changed = False
+
+        for event in events:
+            anomaly_types: list[str] = []
+            goldstein = event.goldstein_scale
+
+            if (
+                goldstein is not None
+                and goldstein < settings.gdelt_anomaly_goldstein_threshold
+            ):
+                anomaly_types.append("extreme_conflict")
+
+            if event.geo_country and await self._is_event_surge(
+                session, event.geo_country
+            ):
+                anomaly_types.append("event_surge")
+
+            if (
+                event.cameo_root
+                and is_high_conflict(event.cameo_root)
+                and goldstein is not None
+                and goldstein
+                < settings.gdelt_anomaly_high_conflict_goldstein_threshold
+            ):
+                anomaly_types.append("high_conflict_cameo")
+
+            if not anomaly_types:
+                continue
+
+            if event.status != "anomaly":
+                event.status = "anomaly"
+                status_changed = True
+            anomalies.append(event)
+
+            for anomaly_type in anomaly_types:
+                await self._emit_anomaly_event(event, anomaly_type)
+
+        if anomalies and status_changed:
+            await session.commit()
+
+        return anomalies
 
     async def ingest_event(self, event: GdeltEvent, case_uid: str) -> None:
         """将 GDELT 事件转为 Evidence + SourceClaim，并 emit claim.extracted。"""
@@ -371,7 +714,7 @@ class GDELTMonitor:
         """判断文章匹配哪些订阅，返回订阅 UID 列表。"""
         matched: list[str] = []
         title_lower = (article.title or "").lower()
-        country = (article.domain_country or "").upper()
+        country = _normalize_country(article.domain_country)
 
         for sub in subs:
             if sub.sub_type == "global":
@@ -380,7 +723,9 @@ class GDELTMonitor:
                 continue
 
             keywords = _extract_match_rule_list(sub, "keywords")
-            countries = [c.upper() for c in _extract_match_rule_list(sub, "countries")]
+            countries = [
+                _normalize_country(c) for c in _extract_match_rule_list(sub, "countries")
+            ]
 
             # 向后兼容 sub_type/sub_target
             if sub.sub_type == "topic":

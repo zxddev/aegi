@@ -60,6 +60,44 @@ class ACHResult:
     grounding_level: GroundingLevel = GroundingLevel.HYPOTHESIS
 
 
+def _context_to_text(context: dict | str | None) -> str:
+    """将上下文对象序列化为可注入 prompt 的文本。"""
+    if context is None:
+        return ""
+    if isinstance(context, str):
+        return context.strip()
+    if not context:
+        return ""
+    try:
+        return _json.dumps(context, ensure_ascii=False, indent=2, sort_keys=True)
+    except TypeError:
+        return str(context)
+
+
+def _fallback_hypotheses() -> list[dict]:
+    """当 LLM 返回空结果时，提供可执行的冷启动候选假设。"""
+    return [
+        {
+            "hypothesis_text": (
+                "Negotiation-track hypothesis: Iran and counterparties keep a "
+                "limited negotiation channel while avoiding direct conflict."
+            )
+        },
+        {
+            "hypothesis_text": (
+                "Escalation-track hypothesis: military pressure and proxy actions "
+                "increase, raising the chance of regional confrontation."
+            )
+        },
+        {
+            "hypothesis_text": (
+                "Stalemate-track hypothesis: no decisive breakthrough occurs and "
+                "the situation remains in prolonged strategic deadlock."
+            )
+        },
+    ]
+
+
 def _compute_coverage(
     supporting: list[str],
     contradicting: list[str],
@@ -223,7 +261,7 @@ async def generate_hypotheses(
     budget: BudgetContext,
     model_id: str = "default",
     trace_id: str | None = None,
-    context: dict | None = None,
+    context: dict | str | None = None,
     llm_client: LLMClient | None = None,
 ) -> tuple[
     list[ACHResult], ActionV1, ToolTraceV1, LLMInvocationResult | DegradedOutput
@@ -256,11 +294,25 @@ async def generate_hypotheses(
     )
 
     claims_summary = "; ".join(sc.quote[:80] for sc in source_claims[:10])
-    prompt = (
-        f"Given these evidence claims:\n{claims_summary}\n\n"
-        f"Generate competing hypotheses that could explain the evidence. "
-        f"Return a JSON list of objects with 'hypothesis_text' field."
-    )
+    context_text = _context_to_text(context)
+    if claims_summary:
+        context_section = ""
+        if context_text:
+            context_section = f"\n\nBackground context:\n{context_text}"
+        prompt = (
+            f"Given these evidence claims:\n{claims_summary}"
+            f"{context_section}\n\n"
+            f"Generate competing hypotheses that could explain the evidence. "
+            f"Return a JSON list of objects with 'hypothesis_text' field."
+        )
+    else:
+        background = context_text or f"case_uid={case_uid}"
+        prompt = (
+            "Given the following case background:\n"
+            f"{background}\n\n"
+            "Generate 3-5 competing hypotheses for intelligence analysis. "
+            "Return a JSON list of objects with 'hypothesis_text' field."
+        )
 
     start_ms = _now_ms()
     try:
@@ -270,13 +322,26 @@ async def generate_hypotheses(
         degraded = DegradedOutput(
             reason=DegradedReason.MODEL_UNAVAILABLE, detail=str(exc)
         )
+        _llm_client = llm_client or llm
+        fallback_results: list[ACHResult] = []
+        for item in _fallback_hypotheses():
+            result = await analyze_hypothesis_llm(
+                item["hypothesis_text"],
+                assertions,
+                llm=_llm_client,
+            )
+            fallback_results.append(result)
         action = ActionV1(
             uid=uuid.uuid4().hex,
             case_uid=case_uid,
             action_type="ach_generate",
             rationale=f"LLM call failed: {exc}",
             inputs={"assertion_count": len(assertions)},
-            outputs={"error": str(exc)},
+            outputs={
+                "error": str(exc),
+                "hypothesis_count": len(fallback_results),
+                "fallback": True,
+            },
             trace_id=_trace_id,
             span_id=_span_id,
             created_at=now,
@@ -296,7 +361,10 @@ async def generate_hypotheses(
             span_id=_span_id,
             created_at=now,
         )
-        return [], action, tool_trace, degraded
+        return fallback_results, action, tool_trace, degraded
+
+    if not raw:
+        raw = _fallback_hypotheses()
 
     duration = _now_ms() - start_ms
 
@@ -308,6 +376,15 @@ async def generate_hypotheses(
             continue
         result = await analyze_hypothesis_llm(h_text, assertions, llm=_llm_client)
         results.append(result)
+
+    if not results:
+        for item in _fallback_hypotheses():
+            result = await analyze_hypothesis_llm(
+                item["hypothesis_text"],
+                assertions,
+                llm=_llm_client,
+            )
+            results.append(result)
 
     all_supporting = [uid for r in results for uid in r.supporting_assertion_uids]
     has_evidence = len(all_supporting) > 0

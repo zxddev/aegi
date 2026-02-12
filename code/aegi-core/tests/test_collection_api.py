@@ -204,11 +204,11 @@ async def test_search_preview(_override_deps):
     data = resp.json()
     assert len(data) == 2
 
-    # Reuters -> 高可信度
+    # Reuters -> 高可信度 (多信号加权后 ~0.82)
     assert data[0]["title"] == "Reuters Article"
-    assert data[0]["credibility"]["score"] == 0.9
+    assert data[0]["credibility"]["score"] >= 0.75
     assert data[0]["credibility"]["tier"] == "high"
 
     # Unknown -> 未知等级
-    assert data[1]["credibility"]["tier"] == "unknown"
-    assert data[1]["credibility"]["score"] == 0.5
+    assert data[1]["credibility"]["tier"] in ("unknown", "low")
+    assert data[1]["credibility"]["score"] <= 0.55

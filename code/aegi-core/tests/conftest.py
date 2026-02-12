@@ -116,6 +116,7 @@ def _reset_infra_singletons():
         get_link_predictor,
         get_neo4j_store,
         get_qdrant_store,
+        get_analysis_memory_qdrant_store,
         get_minio_store,
         get_gdelt_client,
     )
@@ -126,6 +127,7 @@ def _reset_infra_singletons():
         get_causal_inference_engine,
         get_neo4j_store,
         get_qdrant_store,
+        get_analysis_memory_qdrant_store,
         get_minio_store,
         get_gdelt_client,
     ):

@@ -85,10 +85,20 @@ class GDELTScheduler:
             while self._running:
                 self._last_poll_time = datetime.now(timezone.utc)
                 try:
-                    logger.info("GDELT poll starting at %s", self._last_poll_time.isoformat())
+                    logger.info(
+                        "GDELT poll starting at %s", self._last_poll_time.isoformat()
+                    )
                     new_events = await self._monitor.poll()
                     self._last_successful_poll_time = datetime.now(timezone.utc)
                     logger.info("GDELT poll completed: %d new events", len(new_events))
+                    try:
+                        csv_events = await self._monitor.poll_events()
+                        logger.info(
+                            "GDELT Events CSV poll completed: %d new events",
+                            len(csv_events),
+                        )
+                    except Exception:
+                        logger.exception("GDELT Events CSV poll failed")
                 except Exception:
                     logger.exception("GDELT poll failed, will retry next interval")
 

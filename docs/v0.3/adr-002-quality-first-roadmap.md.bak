@@ -1,0 +1,1703 @@
+<!-- Author: msq -->
+
+# ADR-002: 质量优先的分析能力演进路线
+
+> 状态：草案
+> 日期：2026-02-12
+> 决策者：msq
+
+## 背景
+
+当前代码已完成 6 个实现阶段（基础设施 → 报告 → KG增强 → OSINT采集 → 流式传输 → 事件驱动），
+加上近期的本体升级（RelationFact/实体版本化/反馈服务）和 InvestigationAgent（自动调研循环）。
+
+原规划的后续路线是：
+- P3：交叉关联引擎 + 分析记忆（模式学习）
+- P4：概率校准 + 多Agent辩论 + DISARM框架 + 时序因果
+
+经代码审计和 2025-2026 最新研究对照，发现原路线存在三个问题：
+
+1. **底座质量未解决就加功能**：pipeline 的 LLM 调用全部串行、无一致性校验、无校准层
+2. **冷启动依赖过重**：交叉关联和分析记忆都需要大量标注数据才能产生价值
+3. **优先级错位**：校准层被放在 P4（最后），但它对所有概率输出的可信度是基础性的
+
+本 ADR 提出调整后的路线：先修底座质量，再加分析能力。
+
+---
+
+## 现状验证
+
+### 已实现且验证正确的部分
+
+| 模块 | 关键文件 | 验证结论 |
+|------|---------|---------|
+| graphrag fuzzy_match 丢弃未匹配关系 | graphrag_pipeline.py:208-217 | `continue` 跳过，确认存在 |
+| 本体 domain/range 约束 | ontology_versioning.py:785-830 | 校验完整，graphrag 调用链已接入 |
+| RelationFact 证据溯源+时效+冲突 | relation_fact.py, relation_fact_service.py | 三个维度字段齐全，冲突自动检测 |
+| 实体 merge/split 可回滚 | entity_identity_service.py:133-148 | rollback 改状态为 rolled_back |
+| InvestigationAgent 自动调研循环 | investigation_agent.py | LLM生成query→SearXNG+GDELT搜索→证据链入库→贝叶斯更新→多轮迭代 |
+| 贝叶斯 ACH 事件驱动更新 | bayesian_ach.py + event_bus.py | claim.extracted→likelihood评估→Bayes更新→hypothesis.updated |
+| 推送通知 | push_engine.py | 规则匹配+语义匹配+节流+投递，链路完整 |
+
+### 已实现但与原规划能力边界有差距的部分
+
+| 模块 | 原规划描述 | 实际状态 |
+|------|-----------|---------|
+| CrossCorrelationEngine | "发现人类注意不到的组合信号" | 引擎已存在，但显著性评分主要是启发式公式，缺 NPMI/G-test/Bayesian surprise 等统计显著性层 |
+| 分析记忆系统 | "系统越用越准，历史模式匹配" | 记忆检索已存在，但更偏“检索增强”，尚未形成系统化的在线学习/策略自优化闭环 |
+
+### pipeline 底座问题（代码审计发现）
+
+1. **LLM 调用串行深度过高**：当前主链路可近似为 `1 + N*(1+3)` 的等待深度
+   （生成 + 每假设分析 + 每假设三角色对抗），并行化不足。典型 pipeline 延迟 30-60s。
+
+2. **LLM 输出无一致性校验**：同一条 assertion 对互斥假设 A 和 B 都判断为 support，系统不会发现这个逻辑矛盾。
+
+3. **概率输出无校准**：LLM 说"70% 可能"时实际发生率可能只有 50%。所有后验概率、置信度评分都是未校准的原始值。
+
+4. **grounding 未强制执行**：grounding_gate 计算了 grounding_level，但服务层可以忽略它，高置信度输出不要求有证据支撑。
+
+---
+
+## 研究依据
+
+以下结论来自 2025-2026 年公开论文和开源项目调研：
+
+### 直接影响架构决策的发现
+
+| 来源 | 发现 | 对 AEGI 的影响 |
+|------|------|---------------|
+| EvolveCast (arXiv:2509.23936) | LLM 收到新证据时不会正确更新信念，更新"不一致或过度保守" | AEGI 的事件驱动显式更新（EventBus + Bayes）是正确架构，但 LLM 的 likelihood 判断是薄弱环节 |
+| 采样置信度基准 (arXiv:2602.00279) | 跨 20 个 LLM 测试：跑 N 次推理数频率 > 问 LLM "你多有信心" | AEGI 应对关键判断用采样置信度替代单次推理 |
+| AIA Forecaster (arXiv:2511.07678) | 首个匹配人类超级预测者的系统：agentic search + supervisor + 统计校准 | 验证了 AEGI 的 InvestigationAgent 方向，但缺校准层 |
+| ACH-Grounding (GitHub, 2025.12) | "LLM 在组合复杂问题上的幻觉不可避免"，LLM 只负责生成，矩阵分析用确定性代码 | AEGI 已遵循此原则（DoWhy/DS融合），方向正确 |
+| TruthTensor (arXiv:2601.13545) | 准确率相似的模型校准度可能差异巨大 | 单看准确率不够，必须独立测量校准度 |
+| PRISM/Shapley (arXiv:2601.09151) | 用 Shapley 值分解预测为每个输入因素的边际贡献 | 可将 assertion 置信度分解为每个 source 的贡献，比单一数字更有用 |
+| AutoPrunedRetriever (2026.02) | 持久化最小推理子图，token 消耗降低 100 倍 | graphrag_pipeline 应实现子图剪枝 |
+| Tool-MAD (2026.01) | 给不同 agent 不同工具访问权限比相同工具更有效 | 辩论机制中正方/反方应有不同证据访问权限 |
+
+### 竞品与生态位
+
+| 项目 | 与 AEGI 重叠 | 缺什么 |
+|------|-------------|--------|
+| OpenCTI (8.2k stars) | KG 情报平台，STIX2，连接器生态 | 只做网络威胁，无 LLM 分析，无预测 |
+| LightRAG (28.3k stars) | KG+向量混合检索，Neo4j+Qdrant | 无情报领域，无证据链 |
+| Cognee (12.3k stars) | KG 记忆，Neo4j | 无 OSINT，无结构化分析 |
+| SpiderFoot (16.6k stars) | OSINT 自动化 | 无 LLM，无 KG，无分析 |
+| ACH-Grounding (1 star) | ACH + LLM + RAG | 玩具项目，无 KG，无事件驱动 |
+
+结论：AEGI 在地缘政治情报分析领域没有直接开源竞品。证据链 + KG + 事件驱动 + LLM 分析的组合是独特的。
+
+---
+
+## 决策：调整后的演进路线
+
+### 原路线 vs 调整后路线
+
+```
+原路线（功能驱动）：
+  P1 本体升级 → P2 调研Agent → P3 交叉关联+分析记忆 → P4 校准+辩论+DISARM
+                                    ↑ 冷启动严重            ↑ 太晚
+
+调整后路线（质量驱动）：
+  已完成：本体升级 + 调研Agent
+  → P-next-1：底座修复 + 成本控制
+  → P-next-2：校准 + 检索 + 关联 + 因果发现
+  → P-next-3：辩论 + DISARM + Shapley + 元评估
+  → P-next-4：蒸馏 + 数据源扩展
+```
+
+核心原则：**分析准确率从 60% 提到 80%，比准确率 60% 但多三个新功能更有价值。**
+
+
+### P-next-1：底座修复（工程量小，收益大）
+
+目标：不加新功能，让现有 pipeline 输出更准、更快。
+
+#### 1.1 LLM 调用并行化
+
+现状（按调用深度）：
+- `generate_hypotheses`：1 次 LLM 调用生成全部假设（不可并行，也不需要并行）
+- `analyze_hypothesis_llm`：每个假设 1 次 LLM（假设间可并行）
+- `aevaluate_adversarial`：每个假设 3 次 LLM（defense/prosecution/judge）
+  - defense 与 prosecution 可并行
+  - judge 依赖 defense/prosecution 结果，需串行
+- `assess_evidence`（贝叶斯）：一次调用评估所有假设；多条 claim 更新必须串行（后验依赖前序更新）
+
+改动：采用三层并行结构，而不是“5×2”简化模型。
+
+```python
+# 目标串行深度（示意）：
+# 1) generate_hypotheses（1 层）
+# 2) analyze_hypothesis_llm 对 N 个假设并行（1 层）
+# 3) aevaluate_adversarial 对 N 个假设并行（1 层，内部 defense/prosecution 并行 + judge 串行）
+
+hypotheses = await generate_hypotheses(...)
+analyze_results = await asyncio.gather(
+    *[analyze_hypothesis_llm(h, assertions, llm) for h in hypotheses]
+)
+adversarial_results = await asyncio.gather(
+    *[aevaluate_adversarial_parallel(h, assertions, source_claims, llm) for h in analyze_results]
+)
+```
+
+预期效果：从约 `1 + N*(1+3)` 的串行等待，降到约 `3` 层等待深度
+（`generate -> analyze并行 -> adversarial并行`）。对 N>=3 的 case，延迟改善通常优于“60%”。
+
+涉及文件：`pipeline_orchestrator.py`, `stages/builtin.py`, `hypothesis_engine.py`,
+`hypothesis_adversarial.py`
+
+#### 1.2 采样置信度（关键判断）
+
+现状：ACH 的 support/contradict/irrelevant 判断跑一次，取单次结果。
+
+改动：对 Tier 1 判断（ACH likelihood 评估）跑 3 次采样，但按“假设粒度”聚合，
+不是整批一次投票。
+
+```python
+async def sampled_assess_evidence(prompt, n=3):
+    runs = await asyncio.gather(
+        *[llm.invoke_structured(prompt, EvidenceAssessmentRequest) for _ in range(n)]
+    )
+    grouped = group_by_hypothesis_uid(runs)  # {hyp_uid: [judgment, judgment, judgment]}
+    merged = {}
+    for hyp_uid, js in grouped.items():
+        merged[hyp_uid] = {
+            "relation": majority_vote([j.relation for j in js]),
+            "strength": median([j.strength for j in js]),
+            "agreement_rate": vote_ratio(js),  # 例如 2/3, 3/3
+        }
+    return merged
+```
+
+成本：LLM 调用量 ×3，但只对 ACH 判断做（约 25 次/pipeline → 75 次）。
+结合 1.1 的并行化，总延迟增加有限。
+
+新增要求：将 `agreement_rate` 持久化到 `EvidenceAssessment`，作为 P-next-3
+`meta-confidence` 的输入信号之一（低一致率 = 高不确定）。
+
+涉及文件：`bayesian_ach.py`（`assess_evidence` 采样聚合），
+`db/models/evidence_assessment.py`（新增 `agreement_rate` 字段）
+
+#### 1.3 ACH 一致性校验
+
+现状：同一条 assertion 对互斥假设都判断为 support，系统不检测。
+
+前提：P-next-1 默认采用 ACH 标准假设——同一组假设互斥（single-winner）。
+因此不需要先引入 `mutually_exclusive_with` 字段。
+若未来需要“非互斥假设共存”，再扩展 schema。
+
+改动：ACH 矩阵填完后，跑一轮规则校验：
+
+- 互斥假设对同一 assertion 不能同时 strong_support
+- 同一 assertion 的 likelihood 之和应在合理范围内
+- 违反规则的判断标记为 `needs_review`，不自动丢弃
+
+纯规则，不需要额外 LLM 调用。
+
+涉及文件：`bayesian_ach.py`（新增 `validate_consistency()` 方法）
+
+#### 1.4 grounding 强制执行
+
+现状：`grounding_gate()` 计算了 level 但不阻断。
+
+改动：在 pipeline 内部判断层强制执行 grounding。
+当 `ACHResult.grounding_level == HYPOTHESIS` 且 `ACHResult.confidence > 0.7` 时，
+自动降级为 `0.5` 并标记 `grounding_capped: true`。
+
+边界约定：
+- 该规则作用于 `ACHResult.confidence`（分析链路内部信号）
+- `QualityReportV1.confidence_score` 继续作为输出层独立质量分数，不直接覆盖
+
+涉及文件：`hypothesis_engine.py`, `contracts/llm_governance.py`
+
+#### 1.5 LLM 调用统一抽象层（LLMCallManager）
+
+现状：LLM 调用分散在各 service，各自处理并行、重试、预算、日志，重复且容易不一致。
+
+改动：新增统一抽象层 `LLMCallManager`（或等价扩展现有 `LLMClient`），集中处理横切逻辑：
+
+- 并行调度（`gather`）
+- 采样调用（N 次调用 + 投票聚合 + `agreement_rate` 计算）
+- 调用前预算检查
+- 调用后判断日志记录（输入/输出/推理链元数据）
+- 失败重试与降级策略（统一）
+
+各业务模块不直接写采样/预算/日志细节，改为调用统一接口：
+`invoke_with_sampling(...)`、`invoke_with_budget(...)`。
+
+涉及文件：新增 `infra/llm_call_manager.py`，修改各调用点（`hypothesis_engine.py`,
+`hypothesis_adversarial.py`, `bayesian_ach.py`, `pipeline_orchestrator.py`）
+
+#### 1.6 全局 token/cost budget 管理器
+
+现状：每个模块各自控制 LLM 调用量，无全局视角。InvestigationAgent 每次触发 10-15 次 LLM 调用，
+加上采样置信度（×3）、辩论（×2），一个 pipeline 可能 50-100 次 LLM 调用，成本不可控。
+
+改动：新增 `TokenBudgetManager`，pipeline 级别的 token/cost 预算管理：
+
+- pipeline 启动时分配 token 预算（可配置，默认 50k tokens/run）
+- 每次 LLM 调用前检查剩余预算，不足时降级（跳过采样、跳过辩论、用缓存结果）
+- 记录每个 stage 的实际消耗，用于后续优化
+- 提供 `GET /admin/token-usage` 查看消耗分布
+
+降级策略（预算不足时按优先级裁剪）：
+1. 先砍采样（3 次→1 次）
+2. 再砍辩论（跳过）
+3. 再砍 narrative_build（跳过）
+4. hypothesis_analyze 和 adversarial_evaluate 不砍（核心路径）
+
+涉及文件：新增 `services/token_budget.py`，修改 `pipeline_orchestrator.py`（注入 budget），
+修改各 stage（调用前检查 budget）
+
+#### P-next-1 验收标准
+
+- [ ] 并行化改造完成：串行深度从 `1 + N*(1+3)` 降为约 3 层
+- [ ] ACH 采样按“假设粒度”投票，`agreement_rate` 持久化可查询
+- [ ] ACH 矩阵一致性校验，逻辑矛盾检出率 > 90%
+- [ ] `ACHResult.confidence` 的 grounding 强制执行上线
+- [ ] `LLMCallManager` 上线，采样/并行/预算/日志逻辑收敛到统一接口
+- [ ] 全局 token budget 管理器上线，pipeline 消耗可观测、可降级
+
+
+### P-next-2：校准层 + 历史检索 + 交叉关联 + 因果发现
+
+目标：让概率输出可信，让历史经验可用，让多信号关联可发现，让因果关系有统计支撑。
+
+#### 2.1 概率校准层
+
+问题：LLM 输出的概率未经校准，"70% 可能"的实际发生率未知。
+
+方案：
+
+a) feedback_service 增加 `outcome` 字段（实际发生/未发生/未知），分析师在事后标注。
+
+b) 自动训练触发：
+- 全局样本达到 100+ 时首次训练
+- 此后每新增 10 条已解决样本或每周定时重训（取先到条件）
+
+c) 分场景训练策略：
+- `scenario_type` 样本数 >= 30：训练该场景专属 Platt 参数
+- `scenario_type` 样本数 < 30：回退到全局参数
+
+d) Platt scaling（logistic regression）训练函数：
+   `calibrated_prob = sigmoid(a * raw_prob + b)`
+
+e) 校准参数持久化到 `calibration_params` 表，pipeline 启动时加载到内存缓存。
+
+f) 校准函数作为 pipeline 后处理步骤，对所有概率输出做变换，并持续监控
+ECE（Expected Calibration Error）。
+
+冷启动期：校准函数训练前，概率输出旁标注"未校准"。诚实比好看重要。
+
+涉及文件：`feedback_service.py`（加 outcome 字段），新增 `services/calibration.py`，
+新增 `db/models/calibration_params.py`
+
+#### 2.2 RAG 式历史检索（增强现有分析记忆）
+
+问题：现有分析记忆更偏“检索增强”，缺少稳定的历史案例召回策略与入口规范。
+
+方案：先做可解释、可冷启动的历史检索增强，不先引入重型在线学习。
+
+- 每次 pipeline 完成后，将分析摘要（假设、判断、关键 assertion）存入 Qdrant 专用 collection `analysis_archive`
+- 下次 pipeline 运行时，用当前 case 的关键实体+事件类型做语义检索，召回相似历史分析
+- 召回结果作为 context 注入 hypothesis_engine，提示"历史上类似场景的分析结论"
+- 分析师看到的是"上次遇到类似模式时结论是 X"，自行判断是否适用
+
+优势：
+- 第一天就能用（只要有一次历史分析）
+- 不需要标注 outcome
+- 不需要统计显著性
+- 比"80% 导致军事冲突"更诚实——展示历史案例，让人判断
+
+涉及文件：新增 `services/analysis_archive.py`，修改 `pipeline_orchestrator.py`（完成后存档），
+修改 `hypothesis_engine.py`（生成前检索历史）
+
+#### 2.3 NPMI 增强的交叉关联（重构现有引擎）
+
+问题：现有 `cross_correlation.py` 已有完整引擎（实体共现、时空邻近、语义模式），
+但显著性分数部分仍是启发式硬编码，统计解释性不足。
+
+方案：保留现有引擎架构，用 NPMI / surprise score 重构显著性计算，而不是新建平行引擎。
+
+流程：
+1. GDELT monitor 持续产生事件流（已有）
+2. 对 `_entity_cooccurrence`：用 NPMI + G-test 替换当前启发式 `significance` 公式
+3. 对 `_spatiotemporal_proximity`：用 Bayesian surprise score 替换纯密度阈值
+4. `_semantic_pattern` 保持不变（语义相似层面 NPMI 不适用）
+5. 仅对统计显著模式触发 LLM 深度解释（本体约束输出）
+6. 显著模式写入 EventBus，触发推送
+
+NPMI（Normalized Pointwise Mutual Information）初筛的价值：
+- 纯密度阈值只能发现"事件多了"，NPMI 能发现"这两类事件同时出现得异常频繁"
+- 例：某地区"外交召回"和"黄金增持"单独看都不算异常，但 NPMI 显著偏高说明共现超出预期
+- 用 Bayesian surprise score 作为补充：`S = -log2(P(observed | expected_rate))`，Poisson 模型
+- 过滤单事件类型出现 < 10 次的窗口（NPMI 对稀有事件不可靠）
+
+成本控制：只对 NPMI 异常的事件对触发 LLM 分析，不是每个窗口都跑。
+正常情况下每天触发 0-5 次，成本可控。
+
+涉及文件：修改 `services/cross_correlation.py`（显著性计算重构），
+修改 `gdelt_monitor.py`（窗口聚合）
+
+#### 2.4 时序因果发现（tigramite PCMCI）
+
+从 GDELT 时序数据中自动发现滞后因果关系，与交叉关联互补——
+交叉关联发现"这些事件同时出现了"，因果发现回答"它们之间有没有因果关系"。
+
+实现要点：
+- 聚合为周级计数（降噪 + 满足采样要求）
+- 限制 10-15 个变量（CAMEO root code + goldstein + tone）
+- 用 `RobustParCorr` 对 log1p 变换后的计数做检验
+- `tau_max` = 4-8 周（地缘政治动态的合理滞后范围）
+- 非平稳性处理：差分预处理或 RPCMCI（regime-dependent）
+- **定位为假设生成工具，不是因果确认工具**
+
+GDELT → PCMCI 预处理管道（新增明确设计）：
+1. 事件去重：同一事件多媒体转载去重
+2. CAMEO 聚合：细粒度 code 映射到 root code
+3. 地理过滤：按 case 区域或主题子集构建时序
+4. 缺失值处理：周级缺失填 0，并记录稀疏度
+5. 平稳性处理：先做非平稳性检验，再差分或切换到 RPCMCI
+
+输入/输出格式（示意）：
+```json
+{
+  "case_uid": "xxx",
+  "region": "MENA",
+  "weekly_series": [
+    {"week": "2025-01-06", "cameo_root_14": 12, "cameo_root_19": 3, "goldstein_mean": -2.1, "tone_mean": -4.8}
+  ]
+}
+```
+
+与贝叶斯 ACH 的集成：
+- PCMCI 发现的边作为 DoWhy DAG 的初始化输入（替代手动指定）
+- 有统计因果关系的证据-假设对，直接用统计置信度作为 likelihood
+- 无统计因果关系的 fallback 到 LLM 判断
+- 系统跑得越久，因果图越完善，LLM fallback 比例越低
+
+注意事项：
+- GDELT 测量媒体报道量，不是事实。媒体注意力混淆无法完全消除
+- ParCorr 至少需要 200+ 时间步（周级 = 4 年数据），短期案例用不上
+- 没有人发表过 PCMCI 直接应用于 GDELT 的论文，无现成经验
+
+涉及文件：新增 `services/timeseries_preprocess.py`, `services/timeseries_causal.py`，
+修改 `bayesian_ach.py`（likelihood 查因果图优先）
+
+#### P-next-2 验收标准
+
+- [ ] 校准层上线，ECE < 0.15（100+ 样本后）
+- [ ] 未校准概率输出标注"未校准"
+- [ ] 校准训练自动触发（100+ 首训，增量/定时重训）
+- [ ] 校准参数持久化（`calibration_params`）并在 pipeline 启动时自动加载
+- [ ] 历史分析检索可用，hypothesis_engine 生成时引用历史案例
+- [ ] NPMI 异常检测上线，事件对共现显著性可量化
+- [ ] 交叉关联在 NPMI 异常时触发 LLM 分析，产出可解释的模式报告
+- [ ] tigramite PCMCI 可运行，发现的因果边可注入 DoWhy DAG
+
+
+### P-next-3：辩论 + DISARM + Shapley 分解 + 元评估
+
+目标：对高争议断言增加对抗验证，对信息操作增加分类检测，对置信度增加可解释分解，对系统能力增加自我评估。
+
+#### 3.1 轻量辩论（替代全量多 Agent）
+
+问题：原规划的 D2D 框架每条 claim 3-5 次 LLM 调用，成本过高。
+
+替代方案：只对高争议 assertion 做 2-agent 辩论。
+
+触发条件：DS 融合后 `belief > 0.8 AND conflict_degree > 0.3`（高置信但有冲突）。
+典型 pipeline 中满足条件的 assertion 约 5-15%。
+
+触发位置（明确约束）：
+- DS 融合发生在 `assertion_fuse` 阶段
+- 新增独立 `assertion_debate` stage，紧跟 `assertion_fuse`，专门处理满足触发条件的 assertion
+- 不把辩论逻辑塞回 `assertion_fuse`，避免单阶段职责膨胀
+- 需要同步更新 `STAGE_ORDER` 与 playbook 配置
+
+辩论设计（参考 Tool-MAD）：
+- 正方 agent：只能访问支持该 assertion 的 SourceClaim
+- 反方 agent：只能访问反对该 assertion 的 SourceClaim
+- 各自输出论证链（3-5 步），裁判规则（非 LLM）比较论证强度
+- 辩论结果更新 assertion 的 confidence 和 conflict_resolution
+
+成本：每个争议 assertion 2 次 LLM 调用，典型 pipeline 增加 2-6 次调用。
+相比全量辩论（每条 claim × 5 次）降低 90%+ 成本。
+
+涉及文件：新增 `services/adversarial_debate.py`, `services/stages/assertion_debate.py`，
+修改 `assertion_fuser.py`（输出触发候选），`pipeline_orchestrator.py` 与 `deploy/playbooks.yaml`
+（插入 `assertion_debate`）
+
+#### 3.2 DISARM 信息操作分类
+
+DISARM 是 MITRE ATT&CK 风格的信息操作分类体系，将信息操作分解为战术/技术/程序。
+
+实现方式：
+- 将 DISARM 框架的战术/技术编码为本体层的关系类型（加法，不改现有本体）
+- coordination_detector 检测到协同行为时，用规则匹配 DISARM 战术标签
+- 标签写入 assertion 的 metadata，分析师可按战术类型过滤
+
+这是分类标签体系，不需要 LLM，实现成本低。
+
+涉及文件：修改 `coordination_detector.py`（加 DISARM 标签），
+新增 `infra/disarm_taxonomy.py`（战术/技术编码表）
+
+#### 3.3 Shapley 置信度分解
+
+问题：assertion 的置信度是一个数字（如 0.75），分析师无法判断这个数字靠不靠谱。
+
+方案（参考 PRISM, arXiv:2601.09151）：
+- 对每个 assertion，计算每个 SourceClaim 对最终置信度的边际贡献
+- 采用真正的 Shapley 值定义（遍历子集），不是 leave-one-out 近似
+- 输出示例："置信度 0.75 = 路透社 +0.30 + GDELT +0.20 + 某博客 +0.05 + 先验 +0.20"
+
+分析师看到的不是黑箱数字，而是每个来源的贡献权重。
+如果某个低可信度来源贡献了大部分置信度，一眼就能发现问题。
+
+复杂度策略：
+- 常见 3-8 source：精确 Shapley（最多 2^8=256 个子集，可接受）
+- source > 8：降级到采样近似（Monte Carlo Shapley）
+
+涉及文件：修改 `ds_fusion.py`（加 Shapley 分解），修改 `contracts/schemas.py`（AssertionV1 加 source_contributions 字段）
+
+#### 3.4 场景级自信度元评估（meta-confidence）
+
+问题：校准层解决了"概率数字准不准"，但没解决"系统在什么场景下靠谱"。
+系统分析经济制裁影响时准确率 80%，分析政治意图时准确率 50%——分析师需要知道这个差异。
+
+方案：
+
+a) Case 模型加 `scenario_type` 字段（基于 CAMEO root + actor 数量 + 时序趋势的规则分类，
+   5-10 个类型：bilateral_conflict、multilateral_negotiation、economic_sanction 等）
+
+b) feedback_service 加 `outcome` 字段（实际发生/未发生/未知），分析师事后标注
+
+c) 按 scenario_type 统计历史准确率：
+   `accuracy[scenario] = count(correct) / count(resolved)`
+
+d) pipeline 输出附带 meta_confidence：
+   `meta_confidence = base_confidence × scenario_accuracy_factor`
+
+e) meta_confidence 低于阈值时自动标记 `needs_expert_review`
+
+依赖 P-next-2 的校准层和历史检索。与 P-next-1 的采样置信度天然兼容——
+采样一致率本身就是 meta-confidence 的一个信号（一致率低 = 系统不确定）。
+
+涉及文件：修改 `confidence_scorer.py`，修改 `feedback_service.py`，
+新增 `services/meta_confidence.py`
+
+#### P-next-3 验收标准
+
+- [ ] 高争议 assertion 自动触发辩论，辩论结果更新置信度
+- [ ] `assertion_debate` stage 上线并接入 `STAGE_ORDER` / playbook
+- [ ] 协同行为检测结果附带 DISARM 战术标签
+- [ ] assertion 置信度可分解为每个 source 的边际贡献
+- [ ] 分析师可在 API 响应中看到 source_contributions 字段
+- [ ] 系统自信度评估可用，低自信场景自动标记 needs_expert_review
+- [ ] 场景级历史准确率可查询（GET /admin/accuracy-by-scenario）
+
+---
+
+## 与 single-source-plan.md 的关系
+
+本 ADR 不修改 single-source-plan.md 的 P1/P2/P3 范围定义。
+本 ADR 的 P-next-1/2/3 是 single-source-plan P2（ACH + 叙事 + KG）和 P3（预测 + 元认知）
+的实现层细化，聚焦于"怎么做"而非"做什么"。
+
+对应关系：
+- P-next-1（底座修复+成本控制）→ single-source-plan P2 的质量保障前置条件
+- P-next-2（校准+检索+关联+因果）→ single-source-plan P3 的元认知 + 预测基础
+- P-next-3（辩论+DISARM+Shapley+元评估）→ single-source-plan P3 的高级推理能力
+- P-next-4（蒸馏+数据源）→ 超出 single-source-plan 范围，属于长期演进
+
+---
+
+## 风险与缓解
+
+| 风险 | 概率 | 影响 | 缓解 |
+|------|------|------|------|
+| 采样置信度 3 次投票一致率低 | 中 | 说明 LLM 判断本身不稳定，需要更强模型或更好 prompt | 记录一致率指标，低于 60% 时降级为单次+标记"低置信" |
+| 校准样本积累慢 | 高 | 校准层长期处于"未校准"状态 | 接受现实，"未校准"标注本身就是价值——诚实比好看重要 |
+| LLM 交叉关联产生幻觉关联 | 中 | 假阳性推送干扰分析师 | 本体约束 + NPMI 初筛 + 人工确认门槛 |
+| 精确 Shapley 分解计算量随 source 数指数增长 | 中 | 典型 assertion 3-8 个 source 仍可接受，但长尾高 source 会放大计算量 | 3-8 个 source 用精确 2^n；>8 切换 Monte Carlo 近似 |
+| PCMCI 在 GDELT 上发现虚假因果 | 高 | 误导分析 | 严格 p-value 门槛 + 定位为假设生成而非确认 + ACLED 交叉验证 |
+| 红队测试覆盖不足 | 中 | 对抗性场景遗漏 | 每个 Phase 新增对应对抗场景，持续扩展 |
+| trust_level 过早升级 | 中 | 分析师过度依赖系统 | 只允许手动升级，系统只建议不自动执行 |
+| 工作流定义与实际使用偏差 | 高 | API 设计不匹配真实需求 | 先定义再实现，上线后根据使用数据迭代 |
+
+---
+
+## 远期演进：突破 LLM 天花板（P-next-4）
+
+P-next-1/2/3 都是在"让 LLM 更准"这条路上优化。这条路有天花板——LLM 是语言模型，不是推理引擎。
+P-next-4 突破天花板：让系统逐步减少对 LLM 的依赖，同时扩展数据源覆盖面。
+
+### 4.1 结构化知识蒸馏
+
+**目标**：用 LLM 判断训练轻量分类器，高频场景不再调用 LLM。
+
+**现状**：
+- AEGI 每次 pipeline 跑 20-80 次 LLM 调用
+- 主要判断类型：ACH support/contradict/irrelevant、冲突检测、证据评估
+- 10 case/天 = 200-800 判断/天，30 天积累 6000-24000 条，足够训练
+
+**文献强力支持**：
+- Distilling Step-by-Step（Hsieh et al. 2023, arXiv:2305.02301）：
+  770M T5 用 80% 数据超过 540B PaLM。关键：提取 LLM 推理链作为额外监督信号
+- 典型准确率保留：85-92%，推理速度提升 500-1000×
+- 带推理链蒸馏可以超过原始 LLM 准确率（因为聚合了多次判断的知识）
+
+**实现路径**：
+
+a) **数据收集**（P-next-1 阶段就开始，零成本）：
+   新增 `LLMJudgmentLog` 表，记录所有 LLM 判断的输入特征 + 输出 + 推理链。
+   不改现有逻辑，只加日志。
+
+b) **特征工程**（积累 2000+ 样本后）：
+   从输入提取结构化特征：文本长度、实体数量、来源可信度、先验概率、
+   assertion 类型、CAMEO code 等。约 20-30 个特征。
+
+c) **分类器训练**：
+   - ACH 判断：3 分类（support/contradict/irrelevant），LightGBM 或 DeBERTa-base
+   - 冲突检测：二分类，Logistic Regression
+   - 证据强度：回归，Gradient Boosting
+   - 用 LLM 推理链作为多任务训练的辅助信号（Distilling Step-by-Step 方法）
+
+d) **级联部署**：
+   分类器置信度 > 阈值 → 直接用分类器结果
+   分类器置信度 < 阈值 → fallback 到 LLM
+   初期阈值设高（只替代最确定的判断），逐步放宽
+
+**效果预期**：
+- 高频场景（经济数据、常规军事动态）：分类器处理 60-80%，LLM 调用量降一个数量级
+- 边界场景（罕见事件、模糊政治意图）：仍由 LLM 处理
+- 成本降 5-10×，延迟降 100×+（分类器推理 1-5ms vs LLM 500-2000ms）
+
+涉及文件：新增 `db/models/llm_judgment_log.py`，新增 `services/judgment_distiller.py`，
+修改 `bayesian_ach.py` + `assertion_fuser.py`（加级联逻辑）
+
+### 4.2 多维数据源接入
+
+**目标**：扩展 GDELT + SearXNG 之外的结构化数据源，增强因果推断和交叉关联的数据基础。
+
+**候选数据源**（均免费或有免费层）：
+
+| 数据源 | 类型 | 价值 | 接入成本 |
+|--------|------|------|---------|
+| World Bank API | 经济指标（GDP、贸易、通胀） | 经济制裁影响分析、宏观趋势 | 低（REST API，无认证） |
+| ACLED | 冲突事件（精确地理坐标+时间） | 比 GDELT 更准确的冲突数据，无媒体注意力混淆 | 低（API key 免费申请） |
+| ICEWS | 政治事件（CAMEO 编码，机器编码） | 与 GDELT 互补验证，降低单源依赖 | 低（公开数据集） |
+| UN Comtrade | 国际贸易数据 | 制裁效果验证、经济依赖分析 | 低（REST API） |
+
+**实现方式**：
+- 每个数据源一个 gateway tool（遵循红线 #4：工具外联统一走 Gateway）
+- 统一转换为 AEGI 的 Evidence → SourceClaim 链路
+- source_credibility 模块扩展，针对结构化数据源的可信度评估
+
+**对因果推断的价值**：
+- ACLED 提供精确冲突事件，消除 GDELT 的媒体注意力混淆问题
+- World Bank 经济指标是连续时序，天然适合 PCMCI
+- 多源交叉验证降低虚假因果的风险
+
+涉及文件：`aegi-mcp-gateway` 新增 tool（worldbank/acled/icews），
+新增 `infra/worldbank_client.py` 等，修改 `source_credibility.py`
+
+### P-next-4 验收标准
+
+- [ ] LLM 判断日志收集上线（P-next-1 阶段就启动），覆盖所有 LLM 判断调用
+- [ ] 分类器在高频场景替代 60%+ LLM 调用，准确率保留 > 85%
+- [ ] 至少 2 个新数据源接入（建议 ACLED + World Bank），走 gateway tool
+- [ ] 新数据源的 SourceClaim 可参与 DS 融合和贝叶斯更新
+
+### P-next-4 风险
+
+| 风险 | 概率 | 影响 | 缓解 |
+|------|------|------|------|
+| 分类器过拟合 LLM 偏见 | 中 | 继承并放大 LLM 错误 | 用人工反馈数据做验证集，不只用 LLM 标签 |
+| 蒸馏后分布漂移 | 中 | 分类器在新场景失效 | 监控分类器置信度分布，漂移时自动回退 LLM |
+| ACLED API 限流或下线 | 低 | 数据源不可用 | 本地缓存 + 降级到 GDELT only |
+| 多数据源融合增加复杂度 | 中 | 调试困难 | 每个数据源独立 contract test，可单独禁用 |
+
+---
+
+## 终极演进：自主分析循环（P-next-5）
+
+P-next-1 到 P-next-4 解决的是"让系统更准"。P-next-5 解决的是一个更根本的问题：
+**如何让系统像资深分析师一样，自主发现问题、多维度搜索、不被单一信息蒙蔽、持续修正判断。**
+
+### 问题：确认偏误是自主分析的最大敌人
+
+当前 InvestigationAgent 的工作方式是线性的：检测异常 → 搜索 → 找到一个看起来合理的解释 → 停止。
+这和新手分析师犯的错误一模一样——找到第一个说得通的答案就不再深挖。
+
+更糟糕的是，LLM 的 self-correction 在没有外部反馈的情况下效果有限。
+一个 agent 自己跟自己辩论，本质上还是同一个"脑子"在自我纠错，认知偏见会在循环中放大。
+
+### 方案：Generate-Debate-Evolve 锦标赛架构
+
+借鉴三个关键研究成果，构建四层自主分析循环：
+
+#### 研究基础
+
+| 论文 | 核心贡献 | 对 AEGI 的价值 |
+|------|---------|---------------|
+| AI Co-Scientist (arXiv:2502.18864, Google 2025.02) | Generate-Debate-Evolve 锦标赛机制，假设之间竞争淘汰而非自我修正 | 从根本上解决单 agent 确认偏误 |
+| BioDisco (arXiv:2508, 2025.08) | 多 agent + dual-mode evidence + 迭代反馈 + 时间评估 | 多视角证据收集 + 假设时间验证 |
+| Silent Scholar (arXiv:2512.20884, 2025.12) | Beta-Bernoulli 信念模型 + 遗忘因子 + 信息增益驱动搜索 | 数学化搜索策略 + 证据时间衰减 |
+| Tool-MAD (2026.01) | 不同 agent 不同工具访问权限 | 认知框架差异化，思维多样性 |
+| Diversity of Thought (2024.10/2025.01) | 多 agent 辩论中思维多样性越高效果越好 | 支持不同认知框架的设计 |
+| D2D Debate-to-Detect (2025.05) | 辩论式误信息检测，模拟真实世界事实核查流程 | 辩论机制的事实核查应用验证 |
+
+#### 第一层：多 Agent 独立探索（消除单一视角偏见）
+
+**核心思想**：不是一个 OpenClaw agent 去搜索，而是同时派出 3-5 个 agent，
+每个 agent 有不同的"认知框架"（不同的 system prompt + 不同的工具访问权限）。
+
+```
+异常事件：黄金涨 3%
+
+Agent-经济：从货币政策、利率、美元指数角度搜索
+Agent-地缘：从冲突、制裁、外交角度搜索
+Agent-市场：从技术面、资金流、ETF 持仓角度搜索
+Agent-供需：从矿产产量、央行购金、工业需求角度搜索
+Agent-黑天鹅：专门搜索不常见的解释（系统性风险、监管变化、算法交易异常）
+```
+
+关键设计：
+- 每个 agent **独立搜索、独立提交证据、独立形成假设**
+- agent 之间**不通信**——避免群体思维（参考 BioDisco 的 dual-mode evidence）
+- 每个 agent 的工具权限不同（参考 Tool-MAD）：
+  Agent-经济 可访问 World Bank API + 央行数据
+  Agent-地缘 可访问 GDELT + ACLED + 外交数据库
+  Agent-市场 可访问价格数据 + ETF 持仓 + 技术指标
+- 证据隔离采用**内存隔离**：
+  - 探索阶段证据保存在各 agent 的内存工作区（不写主库）
+  - 进入辩论阶段后，仅将入围假设关联证据批量回写主库
+  - 避免为“临时探索证据”引入复杂的数据库物理/逻辑隔离方案
+
+**与 OpenClaw 的集成**：
+- 使用 `gateway_client.agent_call()` 并行派发多个 agent
+- 每个 agent 的 system prompt 定义其认知框架和搜索偏好
+- agent 可自主决定搜索路径（浏览网页、读 PDF、调 API），不受预定义 query 限制
+- OpenClaw 的 team agent 已有完整工具链，只需配置不同的 prompt 和权限
+
+涉及文件：修改 `investigation_agent.py`（从单 agent 改为多 agent 派发），
+新增 `services/cognitive_frames.py`（认知框架定义 + agent prompt 生成）
+
+#### 第二层：锦标赛辩论（假设竞争淘汰）
+
+**核心思想**：假设之间两两竞争，而不是一个假设自我修正。
+裁判不是 LLM（避免裁判偏见），而是 AEGI 的贝叶斯 ACH。
+
+```
+5 个 agent 各自提出假设：
+  H1: 胡塞武装攻击商船（Agent-地缘）
+  H2: 美联储鸽派转向（Agent-经济）
+  H3: 中国央行增持（Agent-供需）
+  H4: 技术性突破阻力位（Agent-市场）
+  H5: 瑞士某基金衍生品爆仓（Agent-黑天鹅）
+
+锦标赛第一轮（两两辩论）：
+  H1 vs H2：各自提出支持自己、反驳对方的证据
+  H3 vs H4：同上
+  H5 轮空
+
+裁判机制（AEGI 贝叶斯 ACH）：
+  把双方证据都灌入 pipeline
+  贝叶斯更新后看后验概率谁高
+  纯数学裁决，不依赖 LLM 判断
+
+输家处理（不是淘汰，是改进）：
+  H1 输了 → 反馈给 Agent-地缘：
+  "你的胡塞武装假设被美联储假设击败，
+   因为铜价没涨但美元指数跌了。
+   你能找到新证据挽救你的假设吗？"
+  → Agent-地缘 带着反馈去搜索更多证据
+
+锦标赛第二轮：改进后的假设再次辩论
+  ...
+
+收敛条件：
+  - 某假设连续赢两轮，且后验 > 60%
+  - 或者达到轮次上限（3-4 轮）
+  - 或者 token budget 耗尽
+```
+
+**与现有架构的对接**：
+- `bayesian_ach.py` 已有贝叶斯更新 → 直接作为裁判
+- `hypothesis_adversarial.py` 已有正方/反方/法官框架 → 改造为锦标赛模式
+- `get_evidence_gaps()` 已能识别证据缺口 → 生成输家的改进方向
+- `TokenBudgetManager`（P-next-1）→ 控制锦标赛总成本
+
+涉及文件：新增 `services/tournament.py`（锦标赛调度 + 配对 + 收敛检测），
+修改 `hypothesis_adversarial.py`（从单轮对抗改为多轮锦标赛），
+修改 `investigation_agent.py`（接收辩论反馈后定向搜索）
+
+#### 第三层：信息增益驱动的搜索策略
+
+**核心思想**：agent 不应该搜索"最可能找到的信息"，
+而应该搜索"信息增益最大的信息"（参考 Silent Scholar 的概率框架）。
+
+用信息论量化每条搜索 query 的预期价值：
+
+```python
+def expected_information_gain(query, hypotheses, current_posteriors):
+    """计算一条搜索 query 的预期信息增益。
+    
+    信息增益 = 搜索结果对假设后验分布的预期 KL 散度。
+    高信息增益 = 搜索结果能大幅改变假设排名。
+    低信息增益 = 不管搜到什么，假设排名都不会变。
+    """
+    # 1. 预测 query 可能返回的结果类型（支持/反驳/无关）
+    # 2. 对每种结果，模拟贝叶斯更新后的后验
+    # 3. 计算更新前后后验分布的 KL 散度
+    # 4. 按结果概率加权求期望
+    return weighted_kl_divergence
+```
+
+搜索策略规则：
+- 如果 H1 和 H2 后验很接近（45% vs 40%）→ 优先搜索能区分它们的证据
+- 如果 H1 已经 80% → 搜索支持 H1 的证据信息增益很低，应搜索能推翻 H1 的证据
+- 如果所有假设后验都很低（都 < 30%）→ 可能遗漏了重要假设，搜索全新方向
+- 如果某假设的证据全部来自同一类来源 → 搜索不同类型来源的证据
+
+这比"强制 30% 反面证据"精确得多——用数学告诉 agent 该搜什么。
+
+**实现注意**：精确 KL 散度计算有鸡生蛋问题（要算搜索结果对后验的影响，但搜索还没执行）。
+实际实现用启发式近似：对每个候选 query，估算它最可能影响哪些假设对，
+用当前后验差最小的假设对的 gap 作为预期信息增益的代理指标。信息增益只做排序参考，不完全替代 agent 自主判断。
+
+涉及文件：新增 `services/information_gain.py`（启发式信息增益估算 + query 排序），
+修改 `investigation_agent.py`（搜索前计算信息增益，优先执行高增益 query）
+
+#### 第四层：时间衰减 + 概念漂移检测
+
+**核心思想**：证据会过时。昨天的"美联储鸽派发言"可能被今天的"鹰派数据"推翻。
+系统应该自动检测证据过期并触发刷新（参考 Silent Scholar 的遗忘因子）。
+
+```python
+class TemporalBeliefState:
+    """带时间衰减的信念状态。"""
+    alpha: float          # 支持证据累积（Beta 分布参数）
+    beta: float           # 反对证据累积
+    gamma: float = 0.995  # 遗忘因子，半衰期 ≈ 5.8 天（地缘政治证据有效期是天/周级别）
+    # 可按证据类型分级：突发事件 gamma=0.99/hour，结构性趋势 gamma=0.999/hour
+    last_update: datetime
+    
+    def decay(self, current_time: datetime):
+        """时间衰减：旧证据的影响逐渐减弱。"""
+        steps = (current_time - self.last_update).total_seconds() / 3600  # 小时为单位
+        decay_factor = self.gamma ** steps
+        self.alpha = 1 + decay_factor * (self.alpha - 1)
+        self.beta = 1 + decay_factor * (self.beta - 1)
+    
+    def epistemic_uncertainty(self) -> float:
+        """认知不确定性 = Beta 分布的方差。"""
+        total = self.alpha + self.beta
+        return (self.alpha * self.beta) / (total ** 2 * (total + 1))
+    
+    def needs_refresh(self, threshold: float = 0.2) -> bool:
+        """不确定性超过阈值时需要刷新。"""
+        return self.epistemic_uncertainty() > threshold
+```
+
+触发机制：
+- 定期（每小时）对所有活跃 case 的假设做时间衰减
+- 当某假设的不确定性因衰减升高到阈值时，自动触发新一轮搜索
+- 不是因为有新事件，而是因为旧证据"过期"了，需要验证是否仍然成立
+- 与 GDELT 实时事件流联动：如果相关领域有新事件，加速衰减
+
+与现有贝叶斯 ACH 的集成：
+- `bayesian_ach.py` 的后验概率加上时间衰减维度
+- `confidence_scorer.py` 的置信度评分考虑证据年龄
+- `push_engine.py` 在不确定性升高时推送"证据可能过期"告警
+
+涉及文件：新增 `services/temporal_belief.py`（时间衰减 + 刷新触发），
+修改 `bayesian_ach.py`（后验加时间衰减），
+修改 `push_engine.py`（不确定性升高告警）
+
+#### 完整自主分析循环
+
+```
+异常检测（GDELT / 市场数据 / 任意数据源）
+  ↓
+多 Agent 独立探索（3-5 个不同认知框架的 OpenClaw agent）
+  ↓ 各自独立在内存工作区提交证据和假设
+锦标赛辩论（假设两两竞争，AEGI 贝叶斯做裁判）
+  ↓ 输家收到反馈，带着反馈定向搜索改进
+信息增益驱动的定向搜索（优先搜索 KL 散度最大的方向）
+  ↓ 入围证据回写主库，贝叶斯更新
+收敛检测（后验稳定 / 轮次上限 / budget 耗尽）
+  ↓
+推送分析报告（含完整辩论记录 + 证据链 + 不确定性量化）
+  ↓
+时间衰减持续监控（旧证据过期 → 自动触发刷新循环）
+```
+
+**与之前方案的关键区别**：
+
+| 维度 | 之前（线性搜索-质疑循环） | 现在（锦标赛架构） |
+|------|------------------------|-------------------|
+| 视角 | 单 agent 自我纠错 | 多 agent 独立探索，消除确认偏误 |
+| 假设竞争 | 一个假设反复修补 | 假设之间优胜劣汰 |
+| 搜索策略 | 规则驱动（"30% 反面证据"） | 信息增益驱动（数学最优） |
+| 裁判 | LLM 自我判断 | 贝叶斯 ACH 数学裁决 |
+| 时间维度 | 静态分析 | 证据时间衰减 + 自动刷新 |
+| 停止条件 | 固定轮次 | 收敛检测（后验稳定） |
+
+#### OpenClaw 在锦标赛架构中的角色
+
+OpenClaw 从"被动执行搜索指令"升级为"多个独立分析 agent 的执行层"：
+
+1. **Agent 派发**：`gateway_client.agent_call()` 并行派发多个 agent，
+   每个 agent 有独立的 session、独立的 system prompt、独立的工具权限
+2. **自主搜索**：每个 agent 自主决定搜索路径——浏览网页、读 PDF、调 API、
+   写脚本处理数据。不受预定义 query 限制
+3. **证据隔离**：探索阶段各 agent 的证据仅存在于各自内存工作区，
+   不共享数据库视图，避免通过共享数据导致认知趋同
+4. **证据回写**：辩论阶段开始后，将入围假设对应证据统一写入证据库
+5. **辩论反馈接收**：锦标赛输家收到 AEGI 的反馈后，agent 带着反馈继续搜索
+6. **结果推送**：最终分析报告通过 `notify_user` 推送给分析师
+
+AEGI 的角色：
+1. **证据库**：统一存储辩论入围后的证据（探索阶段证据不直接入主库）
+2. **贝叶斯裁判**：用数学（不是 LLM）裁决假设优劣
+3. **信息增益计算器**：告诉 agent 该搜什么方向
+4. **时间衰减监控器**：检测证据过期，触发刷新
+
+#### P-next-5 验收标准
+
+- [ ] 多 agent 并行探索可运行，3-5 个不同认知框架的 agent 独立搜索
+- [ ] 探索阶段采用内存隔离，辩论阶段只回写入围证据
+- [ ] 锦标赛辩论机制可运行，假设两两竞争，贝叶斯裁决
+- [ ] 信息增益启发式估算可用，搜索 query 按预期增益排序
+- [ ] 时间衰减机制可用，gamma 按证据类型分级，证据过期自动触发刷新
+- [ ] agent 部分失败时优雅降级（≥2 存活继续，<2 降级单 agent）
+- [ ] H0="以上都不是"假设纳入贝叶斯框架，P(H0) 上升时触发假设发现
+- [ ] 孤儿证据追踪可用，占比超阈值时触发假设发现
+- [ ] 红队 agent 可用结构化反事实框架注入新假设
+- [ ] 锦标赛触发条件可配置（max posterior / cross-correlation / 手动 / trust_level）
+- [ ] 端到端测试：给定异常事件，系统自主完成多轮探索-辩论-收敛，输出分析报告
+- [ ] 分析报告包含完整辩论记录、证据链、不确定性量化
+
+#### P-next-5 风险
+
+| 风险 | 概率 | 影响 | 缓解 |
+|------|------|------|------|
+| 多 agent 成本过高 | 高 | 5 agent × 3 轮辩论 ≈ 43-100 次 LLM 调用/次分析 | TokenBudgetManager 全局控制 + 认知框架数量可配置（2-5） |
+| agent 之间假设高度重叠 | 中 | 多样性不足，锦标赛退化为重复 | 认知框架差异化设计 + 重叠检测（语义相似度 > 0.9 时合并） |
+| 锦标赛不收敛 | 中 | 假设后验持续震荡 | 硬性轮次上限 + 震荡检测（连续 2 轮变化 < 3% 视为收敛） |
+| 时间衰减过快导致频繁刷新 | 低 | 不必要的搜索消耗 | gamma 按证据类型分级 + 刷新冷却期 + 只对活跃 case 衰减 |
+| 信息增益计算不准 | 中 | 搜索方向偏差 | 用启发式近似代替精确 KL，信息增益只做排序参考 |
+| agent 部分失败 | 中 | LLM 超时导致锦标赛中断 | 最少 2 个 agent 存活即可继续；存活 < 2 时降级为单 agent 模式（等同现有 hypothesis_engine） |
+| 内存隔离下 agent 崩溃导致探索证据丢失 | 中 | 单轮探索结果丢失 | 探索阶段周期性 checkpoint（本地临时文件），进入辩论前强制快照 |
+
+#### P-next-5 依赖
+
+- P-next-1：TokenBudgetManager（成本控制）
+- P-next-2：校准层（贝叶斯裁判的概率输出需要校准）、PCMCI（因果图辅助信息增益计算）
+- P-next-3：Shapley 分解（辩论结果的可解释性）、meta-confidence（收敛判断）
+- P-next-4：蒸馏分类器（降低多 agent 的 LLM 调用成本）、多数据源（agent 工具丰富度）
+
+#### 假设集完整性保障
+
+锦标赛架构的隐含假设是"正确答案在生成的假设集合里"。如果假设集本身不完整，
+锦标赛只会在错误选项中选出"最不错的错误"。需要三层机制保障假设集完整性：
+
+**第一层：异常驱动的假设发现（自下而上）**
+
+现状：`gdelt_monitor.py` 检测到异常后只发告警事件，不触发假设生成。
+`cross_correlation.py` 有 `suggested_hypothesis` 字段但是 LLM 随机建议，无系统化框架。
+
+方案：当异常事件无法被现有假设集合中任何一个以 P(E|Hi) > 0.3 解释时，
+触发 abductive reasoning（溯因推理）生成新假设。不是每个 event_surge 都触发，
+只有"孤儿异常"（对所有现有假设的似然都低）才值得生成新假设。
+
+```python
+def should_trigger_hypothesis_discovery(
+    anomaly: AnomalyEvent,
+    hypotheses: list[Hypothesis],
+    posteriors: dict[str, float],
+) -> bool:
+    """只有当异常无法被现有假设解释时才触发假设发现。"""
+    max_likelihood = max(
+        assess_likelihood(anomaly, h) for h in hypotheses
+    )
+    return max_likelihood < 0.3  # 所有假设都无法解释这个异常
+```
+
+涉及文件：修改 `services/gdelt_monitor.py`（异常→假设发现触发），
+新增 `services/hypothesis_discovery.py`（溯因推理生成新假设）
+
+**第二层：对抗性假设注入（红队 agent）**
+
+现状：`hypothesis_adversarial.py` 的 Prosecution agent 只能质疑现有假设，不能注入新假设。
+
+方案：在锦标赛中加入专职红队 agent，职责不是评估现有假设，而是生成"黑天鹅"假设。
+用结构化反事实框架替代开放式"想想意外情况"——明确列出当前假设的关键前提，
+逐一否定，检查是否有替代解释能覆盖同样的证据。
+
+注意：LLM 生成真正意外假设的能力有限，倾向于生成常见叙事变体。
+反事实框架（"如果前提 X 不成立，什么替代解释能覆盖同样的证据？"）
+比开放式 prompt（"想想意外情况"）更有效。
+
+涉及文件：修改 `services/hypothesis_adversarial.py`（新增红队注入模式），
+修改 `services/tournament.py`（红队 agent 参与锦标赛）
+
+**第三层：元认知循环（假设集完整性检测）**
+
+现状：`bayesian_ach.py` 的后验之和恒等于 1.0（数学约束），无法直接表示"未解释概率"。
+`confidence_scorer.py` 测量分析质量但不检测假设集完整性。
+
+方案：两个机制组合——
+
+a) 在贝叶斯框架中加入显式 H0 = "以上都不是"假设，
+   设定 P(E|H0) 为基线值（0.3），让贝叶斯更新自然追踪 H0 的后验。
+   如果 P(H0) 持续上升，说明假设集不完整，触发假设发现。
+
+b) 追踪"孤儿证据"——对所有假设 P(E|Hi) 都低的证据项。
+   孤儿证据占比超过阈值（如 20%）时触发假设发现。
+   孤儿证据本身作为假设发现的输入线索（"这些证据指向什么？"）。
+
+H0 提供全局信号（"假设集可能不完整"），孤儿证据提供具体线索（"哪些证据没被解释"）。
+
+涉及文件：修改 `services/bayesian_ach.py`（加入 H0 + 孤儿证据追踪），
+新增 `services/metacognitive_loop.py`（完整性检测 + 触发假设发现）
+
+**锦标赛触发条件**
+
+不是所有分析都需要启动锦标赛。触发条件：
+- (a) 常规 ACH 的 max(P(Hi)) < 0.4（没有明确赢家）
+- (b) cross_correlation 发现高显著性模式
+- (c) 分析师手动触发
+- (d) trust_level=3 的 case 自动触发
+
+---
+
+## 远景探索：超越文本分析（P-next-6+）
+
+P-next-1 到 P-next-5 都在优化"如何更好地分析文本信息"。但情报分析的信号远不止文本。
+以下五个方向突破文本分析的边界，让 AEGI 从"文本分析引擎"进化为"全域态势感知系统"。
+
+### 探索一：预测市场作为校准锚点（推荐最先做，成本极低）
+
+**问题**：校准层（P-next-2）的冷启动需要 100+ 标注样本，积累期可能数月。
+在此期间所有概率输出都标注"未校准"，分析师无法判断系统输出的可信度。
+
+**洞察**：预测市场（Polymarket、Metaculus、PredictIt）的价格本身就是经过真金白银校准的概率。
+"某国 2026 年发生军事冲突"在 Polymarket 上的价格是 0.35，这个 35% 比任何 LLM 输出都更可信。
+
+**方案**：
+
+a) 接入预测市场 API（Polymarket 有公开 API，Metaculus 有公开数据集），
+   作为一个特殊的数据源，提供"市场校准概率"。
+
+b) 三种使用方式：
+   - **先验锚定**：用预测市场价格替代默认均匀先验。
+     现在 `bayesian_ach.py` 的 `initialize_priors()` 已支持外部 priors dict，
+     默认是均匀分布 P(H)=1/N，换成市场价格能提供更合理的起点。
+   - **校准基准**：AEGI 的后验 vs 预测市场价格，差异大的地方要么是 AEGI 发现了
+     市场还没反映的信息（alpha），要么是 AEGI 错了。这个差异本身就是有价值的信号。
+   - **冷启动替代**：在校准层训练完成前，用预测市场价格作为外部校准参考。
+
+c) 长期跟踪 AEGI vs 预测市场的 Brier Score，作为系统能力的客观评估。
+
+**实现成本**：极低。一个 API client + 一个 gateway tool，约 200 行代码。
+不需要改现有架构，只是多一个数据源。
+
+**限制**：预测市场只覆盖热门话题，长尾事件没有市场价格。
+但热门话题恰好是分析师最关注的。
+
+涉及文件：新增 `infra/prediction_market_client.py`（Polymarket/Metaculus API），
+`aegi-mcp-gateway` 新增 tool，修改 `bayesian_ach.py`（先验可选用市场价格）
+
+### 探索二：知识图谱多跳推理辅助假设生成
+
+**问题**：假设生成完全依赖 LLM 的"想象力"。LLM 擅长常见模式，
+但不擅长发现隐藏的间接关系（A→B→C→D 的四跳推理）。
+
+**洞察**：Neo4j 里已经存储了大量实体和关系。知识图谱本身可以做推理——
+如果 A 制裁了 B，B 是 C 的主要贸易伙伴，C 是 D 的能源供应商，
+那 A 的制裁可能间接影响 D 的能源安全。这种多跳推理用图算法比 LLM 更可靠。
+
+**方案**：
+
+a) **路径发现**：给定异常事件涉及的实体，在 Neo4j 中搜索 2-4 跳内的所有路径。
+   用 Cypher 查询：
+   ```cypher
+   MATCH path = (source:Entity {name: $anomaly_entity})-[*2..4]-(target:Entity)
+   WHERE target.type IN ['Country', 'Organization', 'Commodity']
+   RETURN path, reduce(s = 1.0, r IN relationships(path) | s * r.confidence) AS path_confidence
+   ORDER BY path_confidence DESC
+   LIMIT 20
+   ```
+
+b) **链接预测**：用 PyKEEN（知识图谱嵌入）预测尚不存在但可能存在的关系。
+   比如 A 和 D 之间没有直接关系，但嵌入空间中它们很近，
+   说明可能存在未被记录的间接影响。
+
+c) **假设生成**：把发现的路径和预测的链接作为假设生成的输入：
+   "图谱显示 A→B→C→D 的影响路径，置信度 0.6。
+    这是否能解释当前观察到的 D 的异常？"
+
+**与锦标赛架构的集成**：
+- 图谱推理的结果作为额外的"认知框架"注入某个 agent
+- 或者作为独立的假设来源，直接进入锦标赛
+
+**实现成本**：中低。路径发现用现有 Neo4j 即可——`neo4j_store.py` 已有
+`find_multi_hop_paths()`（max_depth 可配置），`graph_analysis.py` 已有 `find_paths()` 封装。
+PyKEEN 已在可选依赖中且有 `link_predictor.py` 实现（模型训练+缓存+预测）。
+真正缺的只是"图谱发现 → 假设生成"的桥接层。
+
+涉及文件：新增 `services/kg_reasoning.py`（路径发现 + 链接预测），
+修改 `services/hypothesis_discovery.py`（图谱推理作为假设来源）
+
+### 探索三：分析师反馈强化学习（Bandit 优化）
+
+**问题**：feedback_service 收集了分析师反馈，但只用来做校准（Platt scaling）。
+系统不会根据反馈调整自己的行为——哪种搜索策略更有效、哪种认知框架更有用、
+推送什么粒度的信息分析师最满意，系统不知道。
+
+**方案**：用 contextual bandit 算法，把分析师反馈作为奖励信号，
+在线优化系统的多个决策点。
+
+a) **认知框架选择**（P-next-5 锦标赛）：
+   - 5 个认知框架不是每次都全派，用 Thompson Sampling 选择 3 个
+   - 奖励信号：分析师标注"有用"的分析中，哪些认知框架贡献了关键假设
+   - 长期效果：系统自动学会"经济类异常多派 Agent-经济和 Agent-供需"
+
+b) **搜索策略优化**：
+   - 信息增益计算有多个近似方法，哪个实际效果最好？
+   - 用 bandit 在不同策略之间分配搜索预算
+   - 奖励信号：搜索结果是否导致后验显著变化
+
+c) **推送粒度优化**：
+   - 分析师是喜欢详细报告还是简短摘要？高频推送还是低频汇总？
+   - 用 bandit 优化推送策略
+   - 奖励信号：分析师是否点开、是否标注有用、是否忽略
+
+```python
+class CognitiveBandit:
+    """Thompson Sampling 选择认知框架。"""
+    def __init__(self, frames: list[str]):
+        # 每个框架维护一个 Beta 分布
+        self.alphas = {f: 1.0 for f in frames}  # 成功次数
+        self.betas = {f: 1.0 for f in frames}   # 失败次数
+    
+    def select(self, n: int = 3) -> list[str]:
+        """采样选择 n 个框架。"""
+        samples = {f: np.random.beta(self.alphas[f], self.betas[f]) 
+                   for f in self.alphas}
+        return sorted(samples, key=samples.get, reverse=True)[:n]
+    
+    def update(self, frame: str, reward: float):
+        """分析师反馈更新。"""
+        self.alphas[frame] += reward
+        self.betas[frame] += (1 - reward)
+```
+
+**实现成本**：中。Thompson Sampling 几十行代码，不需要训练模型。
+但 reward signal 定义是前置工作——feedback_service 目前只收集 verdict（agree/disagree/need_more），
+没有 outcome ground truth 追踪（反馈是否最终被证实正确）。
+需要先在 `AssertionFeedback` 模型加 `outcome_verified` + `outcome_timestamp` 字段，
+定义清楚什么算"正确"（分析师标注有用？事后验证准确？），bandit 才有可靠的奖励信号。
+关键是 feedback_service 已经有反馈收集基础设施。
+
+涉及文件：新增 `services/adaptive_bandit.py`（bandit 算法），
+修改 `services/tournament.py`（认知框架选择用 bandit），
+修改 `push_engine.py`（推送策略用 bandit）
+
+### 探索四：多模态信号融合
+
+**问题**：AEGI 目前只处理文本信号（新闻、报告、声明）。
+但现实世界最可靠的信号往往不是文本——卫星图像、航运数据、金融时序、
+社交媒体图片/视频。这些信号比新闻文本更难伪造、更实时、更客观。
+
+**场景示例**：
+黄金涨价，文本分析可能被媒体叙事误导。但如果同时看到：
+- AIS 数据显示苏伊士运河通行量下降 40%（航运异常，数值信号）
+- 卫星图像显示某国军事基地车辆密度增加（视觉信号）
+- 某国央行黄金 ETF 持仓数据突增（金融信号）
+这些是硬数据，不是媒体解读。和文本信号交叉验证，可靠性大幅提升。
+
+**架构预留**：
+
+a) Evidence 模型扩展：`contracts/schemas.py` 已有 `Modality` 枚举（TEXT/IMAGE/VIDEO/AUDIO）
+   和 `SourceClaimV1.modality` 字段（含 `segment_ref`、`media_time_range`，目前未被使用）。
+   扩展现有枚举而非新增字段：
+   ```python
+   class Modality(str, Enum):
+       TEXT = "text"
+       IMAGE = "image"
+       VIDEO = "video"
+       AUDIO = "audio"
+       NUMERIC = "numeric"        # 新增：数值信号（价格、计数、比率）
+       TIMESERIES = "timeseries"  # 新增：时序数据引用
+
+   # SourceClaimV1 补充数值字段（与现有 modality 字段配合）
+   numeric_value: float | None = None       # 数值（价格、计数、比率）
+   numeric_context: str | None = None       # 数值含义（"苏伊士运河日通行量"）
+   timeseries_ref: str | None = None        # 时序数据引用
+   ```
+
+b) DS 融合和贝叶斯更新不关心证据是文本还是数据，只关心 likelihood。
+   不同类型的证据用不同的 likelihood 评估方法：
+   - 文本：LLM 评估（现有）
+   - 数值：统计检验（z-score、异常检测）
+   - 时序：趋势分析 + Granger 因果
+
+c) 候选数据源（均有公开 API）：
+
+| 数据源 | 类型 | 信号 | API |
+|--------|------|------|-----|
+| MarineTraffic / AIS | 航运 | 船舶移动、港口拥堵 | 付费，有免费层 |
+| Sentinel Hub | 卫星图像 | 军事活动、基础设施变化 | ESA 免费 |
+| Yahoo Finance | 金融 | 商品价格、汇率、指数 | 免费 |
+| FRED (美联储) | 经济 | 利率、通胀、就业 | 免费 |
+| Flightradar24 | 航空 | 军机活动、航线变化 | 有限免费 |
+
+**实现路径**：
+- 短期（P-next-4）：先接入纯数值数据源（Yahoo Finance、FRED），成本低
+- 中期：接入 AIS 航运数据，和 GDELT 交叉验证
+- 长期：接入卫星图像，用视觉模型提取结构化信息
+
+涉及文件：修改 `contracts/schemas.py`（SourceClaim 扩展），
+新增 `services/numeric_evidence.py`（数值证据的 likelihood 评估），
+各数据源 client 按需新增
+
+### 探索五：对抗性模拟（War Gaming）
+
+**问题**：锦标赛架构里所有 agent 都在"分析过去发生了什么"。
+但情报分析最有价值的是"预测接下来会发生什么"。
+
+**洞察**：美国情报界的 Red Team 分析方法——让分析师扮演对手，
+从对手的视角推演下一步行动。这个方法可以用 LLM agent 自动化。
+
+**方案**：
+
+a) **行为体建模**：给定当前态势，为每个关键行为体创建一个 agent，
+   注入该行为体的已知目标、约束、历史行为模式：
+   ```
+   Agent-某国政府：
+     目标：维护政权稳定、扩大地区影响力
+     约束：经济制裁压力、国内民意
+     历史模式：倾向于渐进式升级，避免直接军事对抗
+     当前态势：[注入最新情报]
+     问题：你下一步最可能做什么？为什么？
+   ```
+
+b) **多方推演**：多个行为体 agent 同时推演，看它们的行动是否会产生连锁反应：
+   - 某国政府 agent："我会增加军事演习频率"
+   - 某国军方 agent："对方增加演习，我需要提高战备等级"
+   - 某国央行 agent："地区紧张升级，我会增持黄金"
+   → 系统发现：这个推演链条和当前观察到的信号（黄金涨价）吻合
+
+c) **推演验证**：把推演结果作为假设注入锦标赛，和数据驱动的假设竞争。
+   如果推演假设在贝叶斯更新后后验升高，说明推演有预测价值。
+
+d) **预测生成**：推演不只解释过去，还预测未来。
+   "如果当前趋势持续，3 周内最可能发生什么？"
+   预测结果作为监测目标——如果预测的事件真的发生了，系统的可信度提升。
+
+**与锦标赛架构的集成**：
+- 推演结果作为一种特殊的"假设来源"进入锦标赛
+- 推演 agent 和分析 agent 使用不同的 prompt 和工具
+- 推演的预测作为 push_engine 的监测目标
+
+**风险**：LLM 扮演行为体的准确性未经验证。
+缓解：推演结果标记为"模拟推演"，不直接作为分析结论，
+只作为假设来源和监测方向。
+
+涉及文件：新增 `services/war_gaming.py`（行为体建模 + 多方推演），
+修改 `services/tournament.py`（推演假设参与锦标赛），
+修改 `push_engine.py`（推演预测作为监测目标）
+
+### 探索方向优先级与实施建议
+
+| 方向 | 价值 | 实现难度 | 建议阶段 | 依赖 |
+|------|------|---------|---------|------|
+| 预测市场校准锚点 | 高 | 极低（~200行） | P-next-2 可选扩展 | 无 |
+| KG 多跳推理 | 高 | 中 | P-next-3 或 P-next-5 | Neo4j 数据积累 |
+| 分析师反馈 Bandit | 高 | 低（~100行） | P-next-4 | feedback 数据积累 |
+| 多模态信号融合 | 很高 | 高 | P-next-4 数值先行，长期扩展 | 数据源接入 |
+| 对抗性模拟 | 很高 | 高 | P-next-5 扩展 | 行为体知识库 |
+
+**建议实施顺序**：
+1. 预测市场（P-next-2，零风险，立即可用）
+2. Bandit 优化（P-next-4，依赖反馈积累，但代码量极小）
+3. KG 推理（P-next-5，和锦标赛架构天然配合）
+4. 数值数据源（P-next-4，Yahoo Finance + FRED 先行）
+5. 对抗性模拟（P-next-5 之后，需要行为体建模成熟）
+
+---
+
+## 完整路线图总览
+
+```
+已完成：基础设施 → 报告 → KG增强 → OSINT → 流式 → 事件驱动 → 本体升级 → 调研Agent
+
+P-next-1（底座修复 + 成本控制）
+  ├─ LLM 并行化（串行深度 `1 + N*(1+3)` → 约 3 层）
+  ├─ 采样置信度（关键判断跑 3 次）
+  ├─ ACH 一致性校验（规则检测逻辑矛盾）
+  ├─ grounding 强制执行
+  ├─ LLMCallManager 统一抽象层（并行/采样/预算/日志/降级）
+  ├─ 全局 token/cost budget 管理器
+  └─ LLM 判断日志收集启动（为 P-next-4 蒸馏积累数据，零成本）
+
+P-next-2（校准 + 检索 + 关联 + 因果发现）
+  ├─ Platt scaling 概率校准
+  ├─ RAG 式历史分析检索（增强现有分析记忆）
+  ├─ NPMI 异常检测 + LLM 驱动交叉关联（重构现有引擎）
+  └─ tigramite PCMCI 时序因果发现（集成到 likelihood 评估）
+
+P-next-3（辩论 + DISARM + Shapley + 元评估）
+  ├─ assertion_debate stage + 轻量 2-agent 辩论（高争议 assertion）
+  ├─ DISARM 信息操作分类标签
+  ├─ Shapley 置信度分解
+  └─ 场景级自信度元评估（meta-confidence）
+
+P-next-4（蒸馏 + 数据源扩展）
+  ├─ 轻量分类器替代高频 LLM 调用（基于 P-next-1 积累的判断日志）
+  └─ 多维数据源接入（ACLED / World Bank / ICEWS / UN Comtrade）
+
+P-next-5（自主分析循环：Generate-Debate-Evolve 锦标赛架构）
+  ├─ 多 Agent 独立探索（3-5 个不同认知框架的 OpenClaw agent，探索阶段内存隔离）
+  ├─ 锦标赛辩论（假设两两竞争，AEGI 贝叶斯做裁判，agent 失败优雅降级）
+  ├─ 信息增益驱动搜索（启发式近似，数学指导搜索方向）
+  ├─ 时间衰减 + 概念漂移检测（gamma 按证据类型分级，证据过期自动刷新）
+  └─ 假设集完整性保障（异常驱动发现 + 红队注入 + H0 元认知循环）
+```
+
+跨阶段依赖：
+- P-next-1 的判断日志 → P-next-4 的蒸馏训练数据
+- P-next-1 的 LLMCallManager → P-next-1/2/3 的采样、并行、预算与审计统一
+- P-next-1 的 TokenBudgetManager → P-next-5 的多 agent 成本控制
+- P-next-1 的采样一致率 → P-next-3 的 meta-confidence 信号之一
+- P-next-2 的校准层 + 历史检索 → P-next-3 的元评估
+- P-next-2 的校准层 → P-next-5 的贝叶斯裁判概率校准
+- P-next-2 的 NPMI 异常检测 → P-next-5 的锦标赛触发条件之一
+- P-next-2 的 PCMCI → P-next-4 的 ACLED 数据可消除 GDELT 媒体混淆
+- P-next-2 的 PCMCI → P-next-5 的信息增益计算（因果图辅助）
+- P-next-3 的 Shapley 分解 → P-next-5 的辩论结果可解释性
+- P-next-3 的 meta-confidence → P-next-5 的收敛判断 + H0 元认知循环
+- P-next-4 的蒸馏分类器 → P-next-5 降低多 agent LLM 调用成本
+- P-next-4 的多数据源 → P-next-5 的 agent 工具丰富度
+
+演进逻辑：
+  P-next-1~3 让系统"更准"（质量驱动）
+  P-next-4 让系统"更便宜"（成本驱动）
+  P-next-5 让系统"更像人"（自主驱动）——从辅助分析工具进化为自主分析实体
+  P-next-6+ 让系统"超越人"（全域驱动）——突破文本边界，多模态+推演+自适应
+
+远景探索方向（P-next-6+，按优先级）：
+  ├─ 预测市场校准锚点（极低成本，P-next-2 可选扩展）
+  ├─ 分析师反馈 Bandit 优化（低成本，P-next-4 扩展）
+  ├─ KG 多跳推理辅助假设生成（中等成本，P-next-5 扩展）
+  ├─ 多模态信号融合（数值先行→航运→卫星，渐进扩展）
+  └─ 对抗性模拟 War Gaming（行为体建模+多方推演+预测验证）
+
+---
+
+## 横切面：贯穿所有阶段的设计原则
+
+以下五个方向不是独立 Phase，而是从 P-next-1 开始就应融入每个模块设计的原则。
+
+### 横切面一：对抗性红队测试
+
+**问题**：整个路线图都在优化"系统做对事情的能力"，但没有系统性测试"系统在什么情况下会犯错"。
+情报分析最危险的不是系统不够准，而是系统很自信地给出错误结论，分析师信了。
+
+**现状**：
+- hypothesis_adversarial.py 有正方/反方/法官三角色对抗框架（452 行）
+- bias_detector 检测 4 种偏误，coordination_detector 检测协同传播
+- fixture_import_service 可注入预构建测试数据（20+ 场景）
+- 但没有系统性红队测试套件，没有中途注入对抗性数据的机制
+
+**方案**：
+
+a) 红队测试套件（P-next-1 开始）：
+   - 定义 10-20 个对抗性场景：矛盾高可信度来源、协同假信息投放、数据源质量突变、
+     prompt injection 尝试、极端值输入
+   - 每个场景有预期行为（应该检测到/应该降级/应该标记）
+   - 作为 CI 的一部分持续运行
+
+b) 中途注入机制：
+   - pipeline 增加 `inject_adversarial` 测试钩子，可在任意 stage 之间注入对抗性数据
+   - 仅在测试模式启用，生产环境禁用
+
+c) 数据源质量监控：
+   - source_credibility 增加"历史可信度趋势"，某来源可信度突然下降时告警
+   - 与 P-next-3 的 meta-confidence 联动
+
+涉及文件：新增 `tests/adversarial/` 目录，修改 `pipeline_orchestrator.py`（测试钩子），
+修改 `source_credibility.py`（趋势监控）
+
+### 横切面二：分析师工作流定义
+
+**问题**：所有模块都是"能力就绪"，但没有端到端的用户旅程把它们串起来。
+API 设计、推送粒度、报告格式都应该由工作流驱动，而不是反过来。
+
+**现状**：
+- API 端点齐全（case CRUD、pipeline 运行、chat、quality、subscriptions、investigations）
+- 推送系统有 priority_threshold（0-3）
+- 但没有统一 dashboard 端点，没有"推荐下一步"，没有 case 级优先级排序
+
+**方案**：
+
+a) 定义典型工作流（输出为 `docs/v0.3/analyst-workflow.md`）：
+   ```
+   晨间巡检：GET /dashboard/morning-brief → 过夜事件摘要 + 高优先级变化
+   深入分析：GET /cases/{uid}/analysis-summary → 假设评估 + 证据缺口 + 推荐动作
+   审核调研：GET /investigations?status=completed → 自动调研结果 + 新证据影响
+   输出结论：POST /cases/{uid}/judgments → 标注结论 + 置信度 + 依据
+   ```
+
+b) 新增统一 dashboard 端点：
+   - `GET /dashboard/morning-brief`：聚合过夜事件、hypothesis 变化、investigation 完成、高优先级推送
+   - `GET /cases/{uid}/recommended-actions`：基于当前 evidence gaps 和 meta-confidence 推荐下一步
+
+c) 工作流定义反过来影响后续 Phase 的实现优先级——
+   如果分析师最常用的是 morning-brief → 深入分析 → 审核调研，
+   那 P-next-2 的历史检索和 P-next-3 的元评估应该优先服务这条路径。
+
+涉及文件：新增 `docs/v0.3/analyst-workflow.md`，新增 `api/routes/dashboard.py`
+
+### 横切面三：统一推理链（reasoning_trace）
+
+**问题**：各模块内部都有推理记录（ToolTrace、ACHResult、BayesianUpdateResult、InvestigationRound），
+但没有统一格式，分析师无法看到完整的"为什么系统得出这个结论"。
+
+**现状**（已有基础，实现成本低）：
+- ToolTraceV1：tool_name、request、response、status、duration_ms、trace_id、span_id
+- ActionV1：action_type、rationale、inputs、outputs、trace_id
+- ACHResult：supporting/contradicting assertion UIDs、gap_list、confidence、grounding_level
+- BayesianUpdateResult：prior/posterior、likelihoods、diagnosticity、max_change
+- InvestigationRound：gap_description、search_queries、results_count、posterior_change
+- 分布式追踪：trace_id 跨 stage 传播，span_id 每个工具调用独立
+
+**缺的是**：
+- 统一的 reasoning_trace API（现在要分别查 tool_traces + actions + investigation rounds）
+- 贝叶斯更新的自然语言解释（"为什么从 40% 升到 62%"）
+- 交叉关联的可验证推理链（不只是 LLM 说"这个模式重要"）
+
+**方案**：
+
+a) 统一 `ReasoningTrace` schema：
+   ```python
+   class ReasoningStep(BaseModel):
+       step_type: str          # "evidence_assessment" | "bayesian_update" | "investigation_search" | ...
+       input_summary: str      # 输入摘要（中文）
+       judgment: str           # 判断结果
+       basis: list[str]        # 依据（SourceClaim UIDs 或统计指标）
+       confidence: float       # 该步骤的置信度
+       trace_id: str           # 关联到 ToolTrace
+   ```
+
+b) 每个模块输出时附带 ReasoningStep，pipeline 汇总为完整 reasoning_trace
+
+c) 新增 API：`GET /cases/{uid}/reasoning-trace` → 按时间排序的完整推理链
+
+涉及文件：新增 `contracts/reasoning.py`（schema），修改各 stage（输出 ReasoningStep），
+新增 `api/routes/reasoning.py`
+
+### 横切面四：渐进式信任机制（trust_level）
+
+**问题**：系统刚上线时分析师不会信任它。一开始就推送"战争准备概率 62%"会适得其反。
+
+**现状**：
+- settings.py 无 trust_level 或 automation_level 概念
+- investigation_enabled 只有全局开关，无 per-case 控制
+- push_engine 有 priority_threshold 但无自动化级别
+- pipeline 无 approval gate（人工审核门）
+
+**方案**：
+
+a) Case 模型加 `trust_level` 字段（1-3）：
+   - Level 1（信息聚合）：只做数据收集和结构化，不输出判断。推送内容为"这三条新闻可能相关"
+   - Level 2（辅助分析）：输出判断但标注为"系统建议"，与分析师判断并行展示。
+     高风险结论（confidence > 0.8 的预测）需要人工确认才推送
+   - Level 3（自主分析）：系统判断直接输出，InvestigationAgent 自动触发，
+     只有 meta-confidence 低于阈值时才要求人工介入
+
+b) pipeline_orchestrator 根据 trust_level 控制行为：
+   - Level 1：跳过 hypothesis_analyze、adversarial_evaluate、forecast_generate
+   - Level 2：全部运行，但输出标记 `system_suggestion: true`
+   - Level 3：全部运行，高 meta-confidence 结果自动推送
+
+c) 新 case 默认 trust_level=1，分析师手动升级。
+   系统可建议升级（"该场景历史准确率 > 80%，建议升级到 Level 2"），但不自动升级。
+
+涉及文件：修改 `db/models/case.py`（加 trust_level），修改 `pipeline_orchestrator.py`（条件执行），
+修改 `push_engine.py`（按 trust_level 过滤推送内容）
+
+### 横切面实施节奏
+
+这五个不是一次性做完，而是随 Phase 逐步深化：
+
+| 横切面 | P-next-1 | P-next-2 | P-next-3 | P-next-4 | P-next-5 |
+|--------|----------|----------|----------|----------|----------|
+| 红队测试 | 基础套件（10 场景） | 交叉关联对抗场景 | 辩论对抗场景 | 蒸馏分类器对抗测试 | 多 agent 共谋/群体思维检测 + 假设集完整性对抗（故意隐藏正确假设，验证 H0 机制能否发现） |
+| 工作流 | analyst-workflow.md 定义 | morning-brief 端点 | recommended-actions 端点 | 自动化工作流 | 锦标赛进度实时查看 + 人工干预入口 |
+| 推理链 | ReasoningStep schema + 基础输出 | 校准解释 + 历史案例引用 | Shapley 分解可视化 | 分类器决策解释 | 完整辩论记录 + 信息增益决策链 |
+| 信任等级 | trust_level 字段 + Level 1/2 | Level 2 完善 | Level 3 + meta-confidence 联动 | 自动升级建议 | Level 3 全自主循环（人工可随时介入） |
+
+### 横切面五：系统鲁棒性（失败模式防御）
+
+**问题**：前面所有优化都在提升系统的"最大能力"，但没有机制在运行时检测系统是否正在犯错。
+情报分析中，一次高置信度的错误判断比十次正确判断的危害大得多。
+横切面一的红队测试是事后的、离线的；这里需要的是运行时的、实时的防御层。
+
+**现状**：
+- `bias_detector.py` 已有 4 种偏误检测（single_source_dependency、single_stance_bias、
+  source_homogeneity、confirmation_bias），纯规则实现
+- `blindspot_detector.py` 检测覆盖缺口、时间窗口过窄、周期性信息空白
+- `confidence_scorer.py` 有 5 维质量评分，但不追踪不确定性在 pipeline 步骤间的传播
+- `hypothesis_adversarial.py` 是 LLM 辩论 + 规则聚合，无形式化逻辑检查
+- `StageResult` 无 confidence/uncertainty 字段，pipeline 不追踪每步不确定性
+
+**方案**：分为单次分析内的实时检查和跨分析的长期适应两类。
+
+#### 单次分析内的实时检查
+
+**a) 认知偏误扩展审计（基于 MindScope 检测数据集与框架）**
+
+现有 `bias_detector.py` 的 4 种偏误是起点，扩展到情报分析最相关的 15-20 种：
+- 锚定效应：第一条搜索结果对最终结论的影响是否过大？打乱证据输入顺序，看结论是否变化
+- 群体极化：锦标赛多轮辩论后，后验是否在极端化（从 60% 涨到 95%）而没有对应新证据
+- 框架效应：同一证据用不同措辞描述时，LLM 的评估是否一致
+- 后见之明偏误：系统是否在事后"合理化"已知结果
+
+参考：MindScope (arXiv:2410.04452) 提供 72 种偏误类别的 5170 个检测问题，
+从中筛选情报分析相关子集。在现有 bias_detector 基础上扩展，不是替代。
+
+涉及文件：修改 `services/bias_detector.py`（扩展偏误类型），
+新增 `tests/adversarial/bias_scenarios.py`（偏误检测测试场景）
+
+**b) 形式化逻辑预检（基于 FormalJudge 思路）**
+
+在假设生成之后、辩论之前，用符号逻辑检查基本一致性：
+- 同一条证据不能同时 support 和 contradict 同一个假设
+- 假设之间不能存在逻辑蕴含关系（H1 蕴含 H2 则应合并）
+- 证据-假设关系矩阵的行列一致性
+
+不需要引入 Z3/Dafny 全套形式化验证，用 Python 规则检查即可覆盖 ACH 场景。
+形式化逻辑检查比贝叶斯裁判更精确——贝叶斯处理概率，逻辑处理必然。
+
+参考：FormalJudge (arXiv:2602.11136) 的神经符号混合范式
+
+涉及文件：新增 `services/logic_checker.py`（ACH 矩阵逻辑一致性检查），
+修改 `services/tournament.py`（辩论前调用逻辑预检）
+
+**c) 不确定性传播追踪（基于 UProp 思路）**
+
+pipeline 每步量化不确定性，追踪累积效应。不确定性在多步推理中会累积放大，
+且 LLM 自身无法感知这种累积。当累积不确定性超过阈值时标记"低可信度"。
+关键是每个 stage 有明确计算口径，而不是统一占位字段。
+
+```python
+class StageUncertainty(BaseModel):
+    stage: str
+    input_uncertainty: float   # 输入不确定性（上一步传来）
+    stage_uncertainty: float   # 本步骤引入的不确定性
+    output_uncertainty: float  # 输出不确定性 = f(input, stage)
+    method: str                # 量化方法（"sampling" | "entropy" | "beta_variance"）
+```
+
+每个 stage 输出时附带 StageUncertainty，pipeline 汇总为不确定性传播链。
+当 output_uncertainty 超过阈值时，后续 stage 的输出自动标记为"低可信度"。
+
+stage 级计算口径（首版）：
+- `assertion_fuse`：`stage_uncertainty = ds_conflict_degree`
+- `hypothesis_analyze`：`stage_uncertainty = 1 - agreement_rate`（采样一致率）
+- `adversarial_evaluate`：`stage_uncertainty = defense/prosecution 分歧度`
+- `narrative_build`：`stage_uncertainty = 1 - evidence_coverage`（无直接概率时用覆盖率代理）
+- `forecast_generate`：`stage_uncertainty = normalized_prediction_interval_width`
+
+输出层约束：所有 stage 都必须产出可解释的不确定性来源说明（`method` + `detail`）。
+
+参考：UProp (arXiv:2506.17419) 的信息论不确定性分解框架
+
+涉及文件：修改 `services/pipeline_orchestrator.py`（StageResult 加 uncertainty），
+新增 `services/uncertainty_tracker.py`（传播计算 + 阈值告警）
+
+**d) 推理轨迹实时审计（基于 TrajAD 思路）**
+
+与 agent 执行并行运行（不是执行完再审计），检测推理跳跃、证据遗漏、逻辑断裂。
+
+冷启动策略：先用规则检测明显的轨迹异常（搜索跳过关键来源、推理步骤缺失、
+结论与证据不匹配），积累标注数据后再训练专门的 verifier 模型。
+
+规则检测示例：
+- agent 搜索了 5 个来源但只引用了 1 个 → 标记"证据选择性引用"
+- agent 的结论中出现了搜索结果中没有的事实 → 标记"幻觉风险"
+- agent 在 3 步内从"不确定"跳到"高置信度" → 标记"推理跳跃"
+
+参考：TrajAD (arXiv:2602.06443) 的细粒度过程监督
+
+涉及文件：新增 `services/trajectory_auditor.py`（规则审计 + 标注收集），
+修改 `services/tournament.py`（agent 执行时并行审计）
+
+**e) 多样性与置信度校准（基于 Demystifying MAD）**
+
+锦标赛中不能只靠不同 system prompt 保证多样性。需要：
+- 显式多样性度量：agent 初始假设的语义相似度矩阵，相似度 > 0.9 时强制重新生成
+- 置信度校准门：agent 的置信度需要校准后才参与辩论，否则过度自信的 agent 会主导结果
+- 辩论权重：按校准后的置信度加权，而非"声音最大的 agent 赢"
+
+参考：Demystifying MAD (arXiv:2601.19921) 的多样性 + 校准置信度机制
+
+涉及文件：修改 `services/tournament.py`（多样性检查 + 置信度校准门）
+
+#### 跨分析的长期适应
+
+**f) 原则演化（基于 PiEvo 思路）**
+
+不是在固定认知框架中搜索，而是让系统自动发现新的分析框架。
+周期性评估各认知框架的历史有效性，淘汰长期无效的框架，
+当现有框架无法解释异常时自动扩展框架空间。
+
+与 Bandit 优化（探索三）的区别：Bandit 在固定框架集合中选择最优子集，
+PiEvo 扩展框架集合本身。两者互补。
+
+参考：PiEvo (arXiv:2602.06448) 的贝叶斯优化 + 高斯过程原则空间搜索
+
+涉及文件：新增 `services/principle_evolution.py`（框架有效性评估 + 自动扩展）
+
+**g) 可证伪性约束 + 结构化假设精炼**
+
+每个假设在生成时必须附带：
+- 预测：如果假设成立，未来 48 小时内应该观察到什么？
+- 否证条件：什么证据出现就说明假设错了？
+- 关键测试：哪一条搜索能最有效地区分这个假设和竞争假设？
+
+系统自动监测预测和否证条件。预测没兑现 → 自动降低后验。否证条件出现 → 淘汰假设。
+这比纯贝叶斯更新更强——贝叶斯是被动的（有新证据才更新），可证伪性是主动的
+（没有预期证据出现本身就是信号）。
+
+假设改进过程用结构化增量编辑框架约束——每次只允许一个局部修改
+（修改一个前提、增加一条证据、调整一个参数），避免假设在改进过程中面目全非。
+
+参考：Tiny Moves (arXiv:2602.09801) 的结构化增量编辑框架
+
+涉及文件：修改 `contracts/schemas.py`（HypothesisV1 加 predictions/falsification_conditions），
+新增 `services/falsification_monitor.py`（预测监测 + 自动后验调整）
+
+#### 自适应分析深度
+
+不是所有事件都值得启动完整锦标赛。系统根据事件重要性自动选择分析深度：
+
+```
+Level 0：纯规则过滤（GDELT 事件量 < 阈值，直接忽略）
+Level 1：单 agent 快速分析（常规事件，~30 秒，~2k tokens）
+Level 2：双 agent 辩论（有争议的事件，~2 分钟，~10k tokens）
+Level 3：完整锦标赛（重大事件，~5-15 分钟，~50k tokens）
+Level 4：锦标赛 + War Gaming（危机级事件，~30+ 分钟，~200k tokens）
+```
+
+升级触发：Level 1 分析后 max(P(Hi)) < 0.4 → 升级到 Level 2；
+Level 2 辩论后仍不收敛 → 升级到 Level 3。
+边际收益递减检测：连续两轮后验变化 < 2% → 提前终止。
+成本-价值权衡：每轮 token 成本 vs 预期信息增益，成本 > 预期增益时停止。
+
+涉及文件：修改 `services/pipeline_orchestrator.py`（分析深度路由），
+与 TokenBudgetManager 联动
+
+#### 鲁棒性横切面实施节奏
+
+| 机制 | P-next-1 | P-next-2 | P-next-3 | P-next-5 |
+|------|----------|----------|----------|----------|
+| 偏误检测 | 扩展到 8 种（在现有 4 种基础上） | 锚定效应 + 框架效应检测 | 群体极化检测（辩论场景） | 全套 15-20 种 |
+| 逻辑预检 | ACH 矩阵基本一致性 | — | 辩论前逻辑门 | 完整形式化检查 |
+| 不确定性传播 | StageUncertainty schema + assertion/hypothesis/adversarial 口径落地 | 校准步骤的不确定性量化 | Shapley 分解的不确定性 | 全 pipeline 传播链 |
+| 轨迹审计 | 规则检测（3 类异常） | — | — | 训练 verifier（基于积累数据） |
+| 多样性校准 | — | — | 2-agent 辩论的多样性检查 | 锦标赛多样性 + 置信度校准门 |
+| 原则演化 | — | — | — | 框架有效性评估 + 自动扩展 |
+| 可证伪性 | — | — | 假设附带预测/否证条件 | 自动监测 + 后验调整 |
+| 分析深度 | Level 0-1 | Level 0-2 | Level 0-2 | Level 0-4 全套 |
+
+---
+
+## 参考文献
+
+### 核心架构论文（直接影响设计）
+
+- **AI Co-Scientist**: [arXiv:2502.18864](https://arxiv.org/abs/2502.18864) (Google, 2025.02) — Generate-Debate-Evolve 锦标赛假设发现，多 agent 异步执行，test-time compute scaling。锦标赛架构的核心参考
+- **BioDisco**: [arXiv:2508.01469](https://arxiv.org/abs/2508.01469) (2025.08) — 多 agent 假设生成 + dual-mode evidence（文献+数据）+ 迭代反馈 + 时间评估。多视角证据收集 + 假设时间验证参考
+- **Silent Scholar**: [arXiv:2512.20884](https://arxiv.org/abs/2512.20884) (2025.12) — Beta-Bernoulli 信念模型 + 遗忘因子(γ) + 信息增益驱动搜索 + epistemic caching。时间衰减 + KL 散度搜索策略参考
+- **Tool-MAD**: [arXiv:2601.04742](https://arxiv.org/abs/2601.04742) (2026.01) — 不同 agent 不同工具访问权限的多 Agent 辩论，事实核查。认知框架差异化 + 证据隔离设计参考
+- **D2D Debate-to-Detect**: [arXiv:2505.18596](https://arxiv.org/abs/2505.18596) (2025.05) — 辩论式误信息检测，模拟真实世界事实核查流程。辩论机制在事实核查场景的验证
+
+### LLM 推理与自我纠错
+
+- **LLMs Cannot Self-Correct Reasoning Yet**: [arXiv:2310.01798](https://arxiv.org/abs/2310.01798) (Huang et al., ICLR 2024) — LLM 在没有外部反馈时无法有效自我纠错，性能甚至下降。证明单 agent 自我质疑有天花板，需要多 agent + 外部裁判
+- **Abductive Inference in RAG**: arXiv (Lin, 2025.11) — RAG 检索证据不完整时，用溯因推理生成缺失前提并验证。异常驱动假设发现的方法参考
+- **GEAR: General Evaluation Framework for Abductive Reasoning**: arXiv (2025.09) — LLM 溯因推理能力的系统评估框架。评估 LLM 在假设生成场景的能力边界
+- **Metacognitive Prompting for Debiasing**: arXiv (Hills, 2025.07) — 用元认知提示减少 LLM 的认知偏误。元认知评估层的 prompt 设计参考
+- **Diversity of Thought in Multi-Agent Debate**: arXiv (Hegazy, 2024.10/2025.01) — 多 agent 辩论中思维多样性越高，推理效果越好。支持不同认知框架的设计决策
+- **PDR: Parallel-Distill-Refine**: [arXiv:2510.01123](https://arxiv.org/abs/2510.01123) (Madaan et al., 2025.10) — 并行生成多个草案 → 蒸馏到工作空间 → 精炼，比长 CoT 更准且更快。多 agent 并行探索后的结果聚合策略参考
+
+### 系统鲁棒性与失败模式防御
+
+- **TrajAD**: [arXiv:2602.06443](https://arxiv.org/abs/2602.06443) (2026.02) — 运行时推理轨迹异常检测，细粒度过程监督 verifier。agent 轨迹审计参考
+- **PiEvo**: [arXiv:2602.06448](https://arxiv.org/abs/2602.06448) (2026.02) — 贝叶斯优化 + 高斯过程在原则空间上搜索，不确定性最小化驱动的科学发现。认知框架自动演化参考
+- **FormalJudge**: [arXiv:2602.11136](https://arxiv.org/abs/2602.11136) (2026.02) — 神经符号混合范式，LLM 编译高层意图为原子可验证约束，Z3/Dafny 形式化验证。ACH 逻辑一致性检查参考
+- **UProp**: [arXiv:2506.17419](https://arxiv.org/abs/2506.17419) (2025.06) — 多步 agent 决策中不确定性的传播与累积，信息论分解框架。pipeline 不确定性追踪参考
+- **Demystifying MAD**: [arXiv:2601.19921](https://arxiv.org/abs/2601.19921) (Zhu et al., 2026.01) — vanilla 多 agent 辩论失败原因分析，多样性初始化 + 校准置信度辩论协议。锦标赛多样性机制参考
+- **MindScope**: [arXiv:2410.04452](https://arxiv.org/abs/2410.04452) (ECAI 2024) — 72 种认知偏误类别的检测数据集与框架，多 agent + RAG + RL，比 GPT-4 高 35%。偏误检测扩展参考
+- **Tiny Moves**: [arXiv:2602.09801](https://arxiv.org/abs/2602.09801) (2026.02) — 结构化增量编辑框架，固定语法的局部修改做假设精炼。假设改进过程约束参考
+- **Scientific Hypothesis Generation Survey**: [arXiv:2505.04651](https://arxiv.org/abs/2505.04651) (2025.05) — LLM 假设生成与验证方法、数据集、评估指标综述。P-next-5 设计参考手册
+
+### 校准与置信度
+
+- **EvolveCast**: [arXiv:2509.23936](https://arxiv.org/abs/2509.23936) (2025.09) — LLM 收到新证据时不会正确更新信念
+- **TruthTensor**: arXiv:2601.13545 (2026.01) — 准确率相似的模型校准度差异巨大
+- **Calibration-Aware RL**: arXiv:2601.13284 (2026.01) — RLHF 导致过度自信
+- **采样置信度基准**: [arXiv:2602.00279](https://arxiv.org/abs/2602.00279) (2026.02) — 采样频率 > 口头置信度
+- **SCA Calibration**: arXiv:2602.07842 (2026.02) — 语义置信度聚合
+- **Semantic Entropy**: [arXiv:2302.09664](https://arxiv.org/abs/2302.09664) (Kuhn et al., 2023) — 语义聚类后计算熵，预测 LLM 输出正确性
+- **AIA Forecaster**: [arXiv:2511.07678](https://arxiv.org/abs/2511.07678) (2025.11) — 首个匹配人类超级预测者的 LLM 系统，agentic search + 统计校准
+
+### 预测与可解释性
+
+- **PRISM/Shapley**: arXiv:2601.09151 (2026.01) — Shapley 值分解预测贡献
+- **sdLM**: arXiv:2601.14862 (2026.01) — 战略教义约束 LLM 输出
+
+### 因果发现与异常检测
+
+- **tigramite**: [github.com/jakobrunge/tigramite](https://github.com/jakobrunge/tigramite) — PCMCI 时序因果发现
+- **Runge et al.** (2019), Science Advances — PCMCI 原始论文
+- **Runge et al.** (2023), Nature Reviews Earth & Environment — 因果发现综述
+- **GCAD: Granger Causality Anomaly Detection**: arXiv (2025.01) — 用 Granger 因果做多变量时序异常检测。数据驱动异常共变发现的方法参考
+- **Structured Temporal Causality for Anomaly Detection**: arXiv (2025.10) — 结构化时序因果关系用于可解释异常检测
+- **Entropy Causal Graphs for Anomaly Detection**: arXiv (2023.12/2025.08) — 熵因果图做多变量时序异常检测。第零层异常共变发现的算法参考
+
+### 知识蒸馏
+
+- **Distilling Step-by-Step**: [arXiv:2305.02301](https://arxiv.org/abs/2305.02301) (Hsieh et al., 2023) — 770M 模型用 80% 数据超过 540B 模型
+- **MiniLLM**: arXiv:2306.08543 (2023) — 反向 KL 散度蒸馏
+- **ChatGPT as Annotator**: arXiv:2303.15056 (2023) — LLM 标注质量超过众包
+
+### 多 Agent 与事实核查
+
+- **AutoPrunedRetriever**: arXiv (2026.02) — 最小推理子图，token 降 100×
+
+### 竞品与生态
+
+- **OpenCTI**: [github.com/OpenCTI-Platform/opencti](https://github.com/OpenCTI-Platform/opencti) (8.2k stars) — STIX2 情报平台，连接器生态参考
+- **LightRAG**: [github.com/HKUDS/LightRAG](https://github.com/HKUDS/LightRAG) (28.3k stars) — KG+向量混合检索，graphrag 参考
+- **Cognee**: [github.com/topoteretes/cognee](https://github.com/topoteretes/cognee) (12.3k stars) — KG 记忆引擎，分析记忆参考
+- **SpiderFoot**: [github.com/smicallef/spiderfoot](https://github.com/smicallef/spiderfoot) (16.6k stars) — OSINT 自动化，数据源接入参考
+- **ACH-Grounding**: [github.com/suprathermal/ACH-Grounding](https://github.com/suprathermal/ACH-Grounding) (2025.12) — ACH + LLM + RAG，架构参考（玩具级但思路对）
+
+### 远景探索相关
+
+- **PyKEEN**: [github.com/pykeen/pykeen](https://github.com/pykeen/pykeen) (2k+ stars) — 知识图谱嵌入 + 链接预测，KG 多跳推理参考
+- **Polymarket API**: [docs.polymarket.com](https://docs.polymarket.com) — 预测市场公开 API，校准锚点数据源
+- **Metaculus API**: [metaculus.com/api](https://www.metaculus.com/api/) — 预测问题 + 社区校准概率，校准基准参考
+- **DISARM Framework**: [github.com/DISARMFoundation/DISARMframeworks](https://github.com/DISARMFoundation/DISARMframeworks) — 信息操作分类体系（MITRE ATT&CK 风格）
+- **Yahoo Finance (yfinance)**: [github.com/ranaroussi/yfinance](https://github.com/ranaroussi/yfinance) — 金融数据 API，多模态数值信号接入
+- **FRED API**: [fred.stlouisfed.org/docs/api](https://fred.stlouisfed.org/docs/api/) — 美联储经济数据，宏观经济信号
+- **Sentinel Hub**: [sentinel-hub.com](https://www.sentinel-hub.com/) — ESA 卫星图像 API，远期多模态视觉信号
+- **DoWhy**: [github.com/py-why/dowhy](https://github.com/py-why/dowhy) — 因果推断框架，AEGI 已集成

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json as _json
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from typing import Any
 
 from aegi_core.contracts.extraction import ExtractionResult
@@ -18,7 +19,21 @@ from aegi_core.infra.neo4j_store import Neo4jStore
 from aegi_core.services.entity import EntityV1
 from aegi_core.services.event import EventV1
 from aegi_core.services.kg_mapper import BuildGraphResult
+from aegi_core.services import ontology_versioning
+from aegi_core.services.ontology_versioning import (
+    EntityTypeDef,
+    EventTypeDef,
+    OntologyVersion,
+    RelationTypeDef,
+)
+from aegi_core.services.relation_fact_service import (
+    RelationFactCreate,
+    RelationFactService,
+)
 from aegi_core.services.relation import RelationV1
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 EXTRACTION_SYSTEM_PROMPT = (
     "你是开源情报研究员，负责从文本中抽取实体、事件和关系。\n"
@@ -65,6 +80,33 @@ def _fuzzy_match(name: str, name_map: dict[str, str]) -> str | None:
     return None
 
 
+def _build_fallback_ontology(
+    extraction: ExtractionResult,
+    *,
+    version: str,
+    created_at: datetime,
+) -> OntologyVersion:
+    """兼容模式：当版本仓库中缺失时，按本次抽取结果构造最小合同。"""
+    return OntologyVersion(
+        version=version,
+        entity_types=[
+            EntityTypeDef(name=t)
+            for t in sorted(
+                {entity.entity_type.value for entity in extraction.entities}
+            )
+        ],
+        event_types=[
+            EventTypeDef(name=t)
+            for t in sorted({event.event_type.value for event in extraction.events})
+        ],
+        relation_types=[
+            RelationTypeDef(name=t)
+            for t in sorted({rel.relation_type.value for rel in extraction.relations})
+        ],
+        created_at=created_at,
+    )
+
+
 async def extract_and_index(
     assertions: list[AssertionV1],
     *,
@@ -72,6 +114,7 @@ async def extract_and_index(
     ontology_version: str,
     llm: LLMClient,
     neo4j: Neo4jStore,
+    session: AsyncSession | None = None,
     trace_id: str | None = None,
 ) -> BuildGraphResult:
     """从 assertions 的文本中抽取实体/事件/关系，写入 Neo4j。"""
@@ -96,29 +139,51 @@ async def extract_and_index(
         ExtractionResult,
         max_tokens=4096,
     )
+    ontology = ontology_versioning.get_version(ontology_version)
+    if ontology is None and session is not None:
+        ontology = await ontology_versioning.get_version_db(ontology_version, session)
+    if ontology is None:
+        ontology = _build_fallback_ontology(
+            extraction, version=ontology_version, created_at=now
+        )
+        ontology_versioning.register_version(ontology)
 
     # 转换为 aegi 领域对象
     entities: list[EntityV1] = []
     events: list[EventV1] = []
     relations: list[RelationV1] = []
     entity_name_to_uid: dict[str, str] = {}
+    entity_uid_map: dict[str, EntityV1] = {}
     event_name_to_uid: dict[str, str] = {}
     assertion_uids = [a.uid for a in assertions]
+    source_claim_uids = sorted(
+        {
+            claim_uid
+            for assertion in assertions
+            for claim_uid in assertion.source_claim_uids
+            if claim_uid
+        }
+    )
 
     for e in extraction.entities:
         uid = uuid.uuid4().hex
-        entities.append(
-            EntityV1(
-                uid=uid,
-                case_uid=case_uid,
-                label=e.name,
-                entity_type=e.entity_type.value,
-                properties={"description": e.description or "", "aliases": e.aliases},
-                source_assertion_uids=assertion_uids,
-                ontology_version=ontology_version,
-                created_at=now,
-            )
+        entity_obj = EntityV1(
+            uid=uid,
+            case_uid=case_uid,
+            label=e.name,
+            entity_type=e.entity_type.value,
+            properties={"description": e.description or "", "aliases": e.aliases},
+            source_assertion_uids=assertion_uids,
+            ontology_version=ontology_version,
+            created_at=now,
         )
+        validation_error = ontology_versioning.validate_against_ontology(
+            entity_obj, ontology
+        )
+        if validation_error is not None:
+            return BuildGraphResult(error=validation_error)
+        entities.append(entity_obj)
+        entity_uid_map[uid] = entity_obj
         entity_name_to_uid[e.name.lower()] = uid
         for alias in e.aliases:
             entity_name_to_uid[alias.lower()] = uid
@@ -150,19 +215,60 @@ async def extract_and_index(
             tgt_uid = _fuzzy_match(r.target_name, event_name_to_uid)
         if src_uid is None or tgt_uid is None:
             continue
-        relations.append(
-            RelationV1(
-                uid=uuid.uuid4().hex,
-                case_uid=case_uid,
-                source_entity_uid=src_uid,
-                target_entity_uid=tgt_uid,
-                relation_type=r.relation_type.value,
-                properties={"description": r.description or ""},
-                source_assertion_uids=assertion_uids,
-                ontology_version=ontology_version,
-                created_at=now,
-            )
+        relation_obj = RelationV1(
+            uid=uuid.uuid4().hex,
+            case_uid=case_uid,
+            source_entity_uid=src_uid,
+            target_entity_uid=tgt_uid,
+            relation_type=r.relation_type.value,
+            properties={"description": r.description or ""},
+            source_assertion_uids=assertion_uids,
+            ontology_version=ontology_version,
+            created_at=now,
         )
+        validation_error = ontology_versioning.validate_against_ontology(
+            relation_obj,
+            ontology,
+            source_entity=entity_uid_map.get(src_uid),
+            target_entity=entity_uid_map.get(tgt_uid),
+        )
+        if validation_error is not None:
+            return BuildGraphResult(error=validation_error)
+        relations.append(relation_obj)
+
+    # 先写 RelationFact 权威层，再投影到 Neo4j。
+    if session is not None and relations:
+        relation_service = RelationFactService(session)
+        for relation in relations:
+            source_entity = entity_uid_map.get(relation.source_entity_uid)
+            target_entity = entity_uid_map.get(relation.target_entity_uid)
+            try:
+                fact = await relation_service.create(
+                    RelationFactCreate(
+                        case_uid=case_uid,
+                        source_entity_uid=relation.source_entity_uid,
+                        target_entity_uid=relation.target_entity_uid,
+                        relation_type=relation.relation_type,
+                        ontology_version=ontology_version,
+                        source_entity_type=(
+                            source_entity.entity_type
+                            if source_entity is not None
+                            else None
+                        ),
+                        target_entity_type=(
+                            target_entity.entity_type
+                            if target_entity is not None
+                            else None
+                        ),
+                        supporting_source_claim_uids=source_claim_uids,
+                        assessed_by="llm",
+                        confidence=0.7,
+                        properties=relation.properties,
+                    )
+                )
+            except ValueError as exc:
+                return BuildGraphResult(error=_make_error(str(exc)))
+            relation.properties["relation_fact_uid"] = fact.uid
 
     # 写入 Neo4j
     await neo4j.upsert_nodes(

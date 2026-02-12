@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING
 from aegi_core.contracts.audit import ActionV1, ToolTraceV1
 from aegi_core.contracts.errors import validation_error
 from aegi_core.contracts.schemas import AssertionV1, SourceClaimV1
+from aegi_core.services.ds_fusion import DEFAULT_CREDIBILITY, fuse_claims_ds
+from aegi_core.services.source_credibility import score_domain
 
 if TYPE_CHECKING:
     from aegi_core.infra.llm_client import LLMClient
@@ -49,6 +51,25 @@ class ConflictRecord:
         }
 
 
+_CONFIRMED_KEYWORDS = {"confirmed", "affirmed", "verified", "acknowledged"}
+_DENIED_KEYWORDS = {"denied", "rejected", "refuted", "disputed"}
+_TENTATIVE_KEYWORDS = {
+    "alleged",
+    "reportedly",
+    "rumor",
+    "rumour",
+    "unverified",
+    "possibly",
+    "might",
+    "may",
+}
+_DEFAULT_CLAIM_CONFIDENCE = 0.75
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
 def _detect_value_conflict(a: SourceClaimV1, b: SourceClaimV1) -> ConflictRecord | None:
     """检测值冲突：同一 attributed_to 但引用内容不同。"""
     if (
@@ -74,12 +95,10 @@ def _detect_modality_conflict(
         return None
     quote_a = a.quote.lower()
     quote_b = b.quote.lower()
-    confirmed_keywords = {"confirmed", "affirmed", "verified", "acknowledged"}
-    denied_keywords = {"denied", "rejected", "refuted", "disputed"}
-    a_confirmed = any(k in quote_a for k in confirmed_keywords)
-    a_denied = any(k in quote_a for k in denied_keywords)
-    b_confirmed = any(k in quote_b for k in confirmed_keywords)
-    b_denied = any(k in quote_b for k in denied_keywords)
+    a_confirmed = any(k in quote_a for k in _CONFIRMED_KEYWORDS)
+    a_denied = any(k in quote_a for k in _DENIED_KEYWORDS)
+    b_confirmed = any(k in quote_b for k in _CONFIRMED_KEYWORDS)
+    b_denied = any(k in quote_b for k in _DENIED_KEYWORDS)
     if (a_confirmed and b_denied) or (a_denied and b_confirmed):
         return ConflictRecord(
             conflict_type="modality_conflict",
@@ -168,6 +187,50 @@ def _detect_geographic_conflict(
     return None
 
 
+def _extract_source_url(claim: SourceClaimV1) -> str | None:
+    """尽力从 claim 结构中提取来源 URL。"""
+    if isinstance(claim.translation_meta, dict):
+        for key in ("source_url", "url", "canonical_url"):
+            value = claim.translation_meta.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+    for selector in claim.selectors:
+        if not isinstance(selector, dict):
+            continue
+        for key in ("source_url", "url", "href", "uri"):
+            value = selector.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def _estimate_claim_confidence(claim: SourceClaimV1) -> float:
+    """从 claim 文本估计其支持/反驳强度。"""
+    text = claim.quote.lower()
+    has_confirmed = any(k in text for k in _CONFIRMED_KEYWORDS)
+    has_denied = any(k in text for k in _DENIED_KEYWORDS)
+    has_tentative = any(k in text for k in _TENTATIVE_KEYWORDS)
+
+    if has_confirmed and has_denied:
+        return 0.5
+    if has_denied:
+        return 0.15
+    if has_confirmed:
+        return 0.85
+    if has_tentative:
+        return 0.6
+    return _DEFAULT_CLAIM_CONFIDENCE
+
+
+def _resolve_credibility(claim: SourceClaimV1) -> float:
+    """解析来源可信度；无法回溯来源 URL 时回退到默认值。"""
+    source_url = _extract_source_url(claim)
+    if not source_url:
+        return DEFAULT_CREDIBILITY
+    return _clamp01(score_domain(source_url).score)
+
+
 def fuse_claims(
     claims: list[SourceClaimV1],
     *,
@@ -253,6 +316,16 @@ def fuse_claims(
         if has_conflict:
             rationale_parts.append("contains conflicts – preserved, not overwritten")
 
+        credibility_scores = {claim.uid: _resolve_credibility(claim) for claim in group}
+        claim_confidences = {
+            claim.uid: _estimate_claim_confidence(claim) for claim in group
+        }
+        ds_result = fuse_claims_ds(
+            group,
+            credibility_scores,
+            claim_confidences=claim_confidences,
+        )
+
         assertion = AssertionV1(
             uid=uuid.uuid4().hex,
             case_uid=case_uid,
@@ -261,9 +334,16 @@ def fuse_claims(
                 "attributed_to": key if key != "_unattributed_" else None,
                 "rationale": "; ".join(rationale_parts),
                 "has_conflict": has_conflict,
+                "ds_belief": ds_result.belief,
+                "ds_plausibility": ds_result.plausibility,
+                "ds_uncertainty": ds_result.uncertainty,
+                "ds_conflict_degree": ds_result.conflict_degree,
+                "ds_mass_true": ds_result.mass_true,
+                "ds_mass_false": ds_result.mass_false,
+                "source_count": ds_result.source_count,
             },
             source_claim_uids=group_uids,
-            confidence=0.5 if has_conflict else 0.9,
+            confidence=ds_result.confidence,
             modality=group[0].modality,
             created_at=now,
         )

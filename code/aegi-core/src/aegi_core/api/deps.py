@@ -87,6 +87,15 @@ def get_qdrant_store() -> QdrantStore:
     return QdrantStore(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
 
 
+@lru_cache(maxsize=1)
+def get_analysis_memory_qdrant_store() -> QdrantStore:
+    return QdrantStore(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key,
+        collection=settings.analysis_memory_collection,
+    )
+
+
 # ── MinIO ───────────────────────────────────────────────────────────
 
 

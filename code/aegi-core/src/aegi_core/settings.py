@@ -59,6 +59,29 @@ class Settings(BaseSettings):
     bayesian_likelihood_contradict_range: str = "0.05,0.45"
     bayesian_update_threshold: float = 0.05
 
+    # Investigation Agent
+    investigation_enabled: bool = True
+    investigation_max_rounds: int = 3
+    investigation_min_posterior_diff: float = 0.15
+    investigation_min_change_threshold: float = 0.05
+    investigation_cooldown_seconds: int = 300
+    investigation_max_concurrent: int = 3
+    investigation_token_budget_per_round: int = 10000
+    investigation_search_sources: str = "searxng,gdelt"
+
+    # Analysis Memory
+    analysis_memory_enabled: bool = True
+    analysis_memory_collection: str = "analysis_memory"
+    analysis_memory_recall_top_k: int = 5
+
+    # Cross-correlation
+    cross_correlation_enabled: bool = True
+    cross_correlation_batch_size: int = 5
+    cross_correlation_batch_window_seconds: int = 300
+    cross_correlation_time_window_hours: int = 72
+    cross_correlation_semantic_top_k: int = 20
+    cross_correlation_significance_threshold: float = 0.65
+
     # 事件驱动推送
     event_push_max_per_hour: int = 10
     event_push_semantic_threshold: float = 0.65
@@ -68,9 +91,13 @@ class Settings(BaseSettings):
     gdelt_proxy: str = "http://127.0.0.1:7890"
     gdelt_poll_interval_minutes: int = 15
     gdelt_scheduler_enabled: bool = False
+    gdelt_doc_timespan: str = "1d"
     gdelt_max_articles_per_query: int = 50
+    gdelt_max_events_per_poll: int = 500
     gdelt_auto_ingest: bool = False
     gdelt_anomaly_goldstein_threshold: float = -7.0
+    gdelt_anomaly_event_surge_multiplier: float = 3.0
+    gdelt_anomaly_high_conflict_goldstein_threshold: float = -5.0
 
     # PyKEEN 链接预测
     pykeen_default_model: str = "RotatE"

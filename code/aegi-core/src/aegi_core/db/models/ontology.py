@@ -17,9 +17,13 @@ class OntologyVersionRow(Base):
     __tablename__ = "ontology_versions"
 
     version: Mapped[str] = mapped_column(sa.String(64), primary_key=True)
-    entity_types: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
-    event_types: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
-    relation_types: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    entity_types: Mapped[list[dict]] = mapped_column(
+        JSONB, default=list, nullable=False
+    )
+    event_types: Mapped[list[dict]] = mapped_column(JSONB, default=list, nullable=False)
+    relation_types: Mapped[list[dict]] = mapped_column(
+        JSONB, default=list, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=utcnow, nullable=False
     )

@@ -140,6 +140,8 @@ async def test_poll_discovers_new_events() -> None:
     assert events[0].title == "Ukraine conflict update"
     mock_session.add.assert_called_once()
     mock_session.commit.assert_called()
+    emitted_event = mock_bus.emit.call_args[0][0]
+    assert emitted_event.case_uid is None
 
 
 @pytest.mark.asyncio
@@ -257,6 +259,79 @@ async def test_poll_no_subscriptions_skips() -> None:
 
     assert events == []
     mock_client.search_articles.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_poll_country_name_matches_iso_subscription() -> None:
+    """domain_country 为国家全名时，仍可命中 countries=ISO 代码订阅。"""
+    mock_client = AsyncMock()
+    mock_client.search_articles = AsyncMock(
+        return_value=[_make_article(title="No keyword", domain_country="Iran")]
+    )
+
+    mock_session = AsyncMock()
+    sub = _make_subscription(
+        uid="sub_ir",
+        sub_type="case",
+        sub_target="case_x",
+        match_rules={"countries": ["IR"]},
+    )
+
+    sub_result = MagicMock()
+    sub_result.scalars.return_value.all.return_value = [sub]
+    dedup_result = MagicMock()
+    dedup_result.scalar_one_or_none.return_value = None
+    mock_session.execute = AsyncMock(side_effect=[sub_result, dedup_result])
+    mock_session.add = AsyncMock()
+    mock_session.commit = AsyncMock()
+
+    with patch("aegi_core.services.gdelt_monitor.get_event_bus") as mock_bus_fn:
+        mock_bus_fn.return_value = AsyncMock()
+        monitor = GDELTMonitor(gdelt=mock_client, db_session=mock_session)
+        events = await monitor.poll()
+
+    assert len(events) == 1
+    assert events[0].geo_country == "IR"
+    assert "sub_ir" in events[0].matched_subscription_uids
+
+
+@pytest.mark.asyncio
+async def test_poll_normalizes_long_country_for_storage() -> None:
+    """超长国家字段应被标准化，避免写库长度溢出。"""
+    mock_client = AsyncMock()
+    mock_client.search_articles = AsyncMock(
+        return_value=[
+            _make_article(
+                title="Trump policy update",
+                domain_country="United Kingdom",
+            )
+        ]
+    )
+
+    mock_session = AsyncMock()
+    sub = _make_subscription(
+        uid="sub_kw",
+        sub_type="case",
+        sub_target="case_x",
+        match_rules={"keywords": ["trump"]},
+    )
+
+    sub_result = MagicMock()
+    sub_result.scalars.return_value.all.return_value = [sub]
+    dedup_result = MagicMock()
+    dedup_result.scalar_one_or_none.return_value = None
+    mock_session.execute = AsyncMock(side_effect=[sub_result, dedup_result])
+    mock_session.add = AsyncMock()
+    mock_session.commit = AsyncMock()
+
+    with patch("aegi_core.services.gdelt_monitor.get_event_bus") as mock_bus_fn:
+        mock_bus_fn.return_value = AsyncMock()
+        monitor = GDELTMonitor(gdelt=mock_client, db_session=mock_session)
+        events = await monitor.poll()
+
+    assert len(events) == 1
+    assert events[0].geo_country == "GB"
+    assert len(events[0].geo_country) <= 8
 
 
 @pytest.mark.asyncio

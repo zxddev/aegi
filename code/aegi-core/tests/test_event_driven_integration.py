@@ -1,3 +1,4 @@
+# Author: msq
 """事件驱动层集成测试：订阅 CRUD + EventBus → PushEngine。"""
 
 from __future__ import annotations
@@ -83,6 +84,46 @@ async def test_create_subscription(_override_deps):
     assert data["user_id"] == "user_a"
     assert data["sub_type"] == "case"
     session.add.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_syncs_expert_profile(_override_deps):
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
+    sub = _make_sub_mock(interest_text="Iran sanctions")
+
+    async def _fake_db():
+        yield session
+
+    app.dependency_overrides[get_db_session] = _fake_db
+    sync_mock = AsyncMock(return_value=True)
+
+    with (
+        patch(
+            "aegi_core.api.routes.subscriptions.Subscription",
+            return_value=sub,
+        ),
+        patch(
+            "aegi_core.api.routes.subscriptions._sync_expert_profile",
+            sync_mock,
+        ),
+    ):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/subscriptions",
+                json={
+                    "user_id": "user_a",
+                    "sub_type": "case",
+                    "sub_target": "case_001",
+                    "interest_text": "Iran sanctions",
+                },
+            )
+
+    assert resp.status_code == 200
+    sync_mock.assert_awaited_once_with(sub)
 
 
 @pytest.mark.asyncio
@@ -175,6 +216,35 @@ async def test_delete_subscription(_override_deps):
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "deleted"
+
+
+@pytest.mark.asyncio
+async def test_delete_subscription_removes_expert_profile(_override_deps):
+    sub = _make_sub_mock(embedding_synced=True)
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = sub
+    session.execute = AsyncMock(return_value=result)
+    session.delete = AsyncMock()
+    session.commit = AsyncMock()
+
+    async def _fake_db():
+        yield session
+
+    app.dependency_overrides[get_db_session] = _fake_db
+    delete_mock = AsyncMock(return_value=None)
+
+    with patch(
+        "aegi_core.api.routes.subscriptions._delete_expert_profile",
+        delete_mock,
+    ):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.delete("/subscriptions/sub_test1")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "deleted"
+    delete_mock.assert_awaited_once_with("sub_test1")
 
 
 @pytest.mark.asyncio

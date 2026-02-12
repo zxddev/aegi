@@ -36,9 +36,12 @@ def _fake_event(uid: str = "ge_001", status: str = "new") -> SimpleNamespace:
         language="English",
         published_at=datetime(2026, 2, 11, tzinfo=timezone.utc),
         cameo_code=None,
+        cameo_root=None,
         goldstein_scale=None,
         actor1=None,
         actor2=None,
+        actor1_country=None,
+        actor2_country=None,
         geo_country="US",
         geo_name=None,
         tone=-1.5,
@@ -58,10 +61,17 @@ async def test_manual_poll(client: AsyncClient, app) -> None:
 
     with patch("aegi_core.api.routes.gdelt.get_gdelt_client") as mock_gc:
         mock_gc.return_value = AsyncMock()
-        with patch(
-            "aegi_core.services.gdelt_monitor.GDELTMonitor.poll",
-            new_callable=AsyncMock,
-            return_value=[fake_ev],
+        with (
+            patch(
+                "aegi_core.services.gdelt_monitor.GDELTMonitor.poll",
+                new_callable=AsyncMock,
+                return_value=[fake_ev],
+            ),
+            patch(
+                "aegi_core.services.gdelt_monitor.GDELTMonitor.poll_events",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
         ):
             from aegi_core.api.deps import get_db_session
 
@@ -177,8 +187,29 @@ async def test_stats(client: AsyncClient, app) -> None:
     day_result = MagicMock()
     day_result.all.return_value = [(datetime(2026, 2, 11, tzinfo=timezone.utc), 5)]
 
+    cameo_result = MagicMock()
+    cameo_result.all.return_value = [("14", 8), ("02", 12)]
+
+    conflict_count_result = MagicMock()
+    conflict_count_result.scalar.return_value = 20
+
+    cooperation_count_result = MagicMock()
+    cooperation_count_result.scalar.return_value = 10
+
+    anomaly_count_result = MagicMock()
+    anomaly_count_result.scalar.return_value = 3
+
     mock_session.execute = AsyncMock(
-        side_effect=[total_result, status_result, country_result, day_result]
+        side_effect=[
+            total_result,
+            status_result,
+            country_result,
+            day_result,
+            cameo_result,
+            conflict_count_result,
+            cooperation_count_result,
+            anomaly_count_result,
+        ]
     )
 
     async def fake_get_db():
@@ -196,3 +227,33 @@ async def test_stats(client: AsyncClient, app) -> None:
     assert data["by_status"]["new"] == 30
     assert len(data["top_countries"]) == 2
     assert data["by_day"][0]["day"] == "2026-02-11"
+    assert data["cameo_distribution"]["14"] == 8
+    assert data["conflict_cooperation_ratio"] == 2.0
+    assert data["anomaly_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_list_anomalies(client: AsyncClient, app) -> None:
+    """GET /gdelt/anomalies → 返回 status=anomaly 的分页数据。"""
+    fake_ev = _fake_event(uid="ge_anomaly", status="anomaly")
+
+    mock_session = AsyncMock()
+    total_result = MagicMock()
+    total_result.scalar.return_value = 1
+    rows_result = MagicMock()
+    rows_result.scalars.return_value.all.return_value = [fake_ev]
+    mock_session.execute = AsyncMock(side_effect=[total_result, rows_result])
+
+    async def fake_get_db():
+        yield mock_session
+
+    from aegi_core.api.deps import get_db_session
+
+    app.dependency_overrides[get_db_session] = fake_get_db
+    resp = await client.get("/gdelt/anomalies")
+    app.dependency_overrides.clear()
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["items"][0]["status"] == "anomaly"

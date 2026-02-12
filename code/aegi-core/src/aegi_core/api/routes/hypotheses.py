@@ -11,35 +11,45 @@ Evidence:
 
 from __future__ import annotations
 
+import logging
 from uuid import uuid4
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aegi_core.api.deps import get_db_session, get_llm_client
+from aegi_core.api.deps import (
+    get_analysis_memory_qdrant_store,
+    get_db_session,
+    get_llm_client,
+)
 from aegi_core.api.errors import not_found
 from aegi_core.contracts.llm_governance import BudgetContext
 from aegi_core.contracts.schemas import AssertionV1, SourceClaimV1
 from aegi_core.db.models.action import Action
 from aegi_core.db.models.assertion import Assertion
+from aegi_core.db.models.case import Case
 from aegi_core.db.models.hypothesis import Hypothesis
 from aegi_core.db.models.source_claim import SourceClaim
 from aegi_core.infra.llm_client import LLMClient
+from aegi_core.infra.qdrant_store import QdrantStore
 from aegi_core.services.hypothesis_adversarial import aevaluate_adversarial
+from aegi_core.services.analysis_memory import AnalysisMemory
 from aegi_core.services.hypothesis_engine import (
     analyze_hypothesis_llm,
     generate_hypotheses as svc_generate,
 )
 
 router = APIRouter(prefix="/cases/{case_uid}/hypotheses", tags=["hypotheses"])
+logger = logging.getLogger(__name__)
 
 
 class GenerateIn(BaseModel):
-    assertion_uids: list[str]
-    source_claim_uids: list[str]
-    context: dict | None = None
+    assertion_uids: list[str] = Field(default_factory=list)
+    source_claim_uids: list[str] = Field(default_factory=list)
+    context: str | dict | None = None
+    actor_id: str | None = None
 
 
 class GenerateOut(BaseModel):
@@ -104,23 +114,103 @@ def _sc_to_v1(row: SourceClaim) -> SourceClaimV1:
     )
 
 
+def _normalize_context(raw: str | dict | None) -> dict | None:
+    """将 string/dict 输入统一成 dict，便于后续拼接上下文。"""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    text = raw.strip()
+    if not text:
+        return None
+    return {"background_text": text}
+
+
 @router.post("/generate", status_code=201)
 async def generate_hypotheses_endpoint(
     case_uid: str,
     body: GenerateIn,
     session: AsyncSession = Depends(get_db_session),
     llm_client: LLMClient = Depends(get_llm_client),
+    qdrant: QdrantStore = Depends(get_analysis_memory_qdrant_store),
 ) -> GenerateOut:
     """生成竞争性假设。"""
-    rows_a = await session.execute(
-        sa.select(Assertion).where(Assertion.uid.in_(body.assertion_uids))
-    )
-    assertions = [_assertion_to_v1(r) for r in rows_a.scalars().all()]
+    assertions: list[AssertionV1] = []
+    if body.assertion_uids:
+        rows_a = await session.execute(
+            sa.select(Assertion).where(Assertion.uid.in_(body.assertion_uids))
+        )
+        assertions = [_assertion_to_v1(r) for r in rows_a.scalars().all()]
 
-    rows_sc = await session.execute(
-        sa.select(SourceClaim).where(SourceClaim.uid.in_(body.source_claim_uids))
-    )
-    source_claims = [_sc_to_v1(r) for r in rows_sc.scalars().all()]
+    source_claims: list[SourceClaimV1] = []
+    if body.source_claim_uids:
+        rows_sc = await session.execute(
+            sa.select(SourceClaim).where(SourceClaim.uid.in_(body.source_claim_uids))
+        )
+        source_claims = [_sc_to_v1(r) for r in rows_sc.scalars().all()]
+
+    context_payload = _normalize_context(body.context) or {}
+    if not assertions and not source_claims:
+        case_row = await session.get(Case, case_uid)
+        create_action = (
+            await session.execute(
+                sa.select(Action)
+                .where(
+                    Action.case_uid == case_uid,
+                    Action.action_type == "case.create",
+                )
+                .order_by(Action.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        cold_start = {
+            "cold_start": True,
+            "case_uid": case_uid,
+            "case_title": case_row.title if case_row else "",
+            "case_rationale": create_action.rationale if create_action else "",
+        }
+        if body.actor_id:
+            cold_start["actor_id"] = body.actor_id
+        context_payload = {**cold_start, **context_payload}
+
+    from aegi_core.settings import settings
+
+    if settings.analysis_memory_enabled:
+        try:
+            memory = AnalysisMemory(session, qdrant=qdrant, llm=llm_client)
+            current_rows = (
+                (
+                    await session.execute(
+                        sa.select(Hypothesis)
+                        .where(Hypothesis.case_uid == case_uid)
+                        .order_by(Hypothesis.posterior_probability.desc().nullslast())
+                        .limit(8)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            current_hypotheses = [
+                {
+                    "uid": row.uid,
+                    "label": row.label,
+                    "posterior_probability": row.posterior_probability,
+                    "confidence": row.confidence,
+                }
+                for row in current_rows
+            ]
+            memory_hint = await memory.enhance_analysis(case_uid, current_hypotheses)
+            if memory_hint.get("similar_cases"):
+                context_payload = {
+                    **context_payload,
+                    "analysis_memory_hint": memory_hint,
+                }
+        except Exception:
+            logger.warning(
+                "AnalysisMemory enhance_analysis failed: case=%s",
+                case_uid,
+                exc_info=True,
+            )
 
     budget = BudgetContext(max_tokens=4096, max_cost_usd=1.0)
     results, svc_action, svc_trace, _ = await svc_generate(
@@ -129,7 +219,7 @@ async def generate_hypotheses_endpoint(
         case_uid=case_uid,
         llm=llm_client,
         budget=budget,
-        context=body.context,
+        context=context_payload or None,
         llm_client=llm_client,
     )
 

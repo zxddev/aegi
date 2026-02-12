@@ -1,7 +1,9 @@
+# Author: msq
 """订阅 CRUD API 路由。"""
 
 from __future__ import annotations
 
+import logging
 from uuid import uuid4
 
 import sqlalchemy as sa
@@ -14,6 +16,7 @@ from aegi_core.api.errors import AegiHTTPError
 from aegi_core.db.models.subscription import Subscription
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
+logger = logging.getLogger(__name__)
 
 
 # ── Schema ───────────────────────────────────────────────────────
@@ -77,6 +80,71 @@ def _sub_to_response(sub: Subscription) -> SubscriptionResponse:
     )
 
 
+async def _sync_expert_profile(sub: Subscription) -> bool:
+    """将订阅兴趣文本同步到 expert_profiles 向量集合。"""
+    interest = (sub.interest_text or "").strip()
+    if not interest or not sub.enabled:
+        sub.embedding_synced = False
+        return False
+
+    from aegi_core.api.deps import get_llm_client
+    from aegi_core.infra.qdrant_store import QdrantStore
+    from aegi_core.settings import settings
+
+    qdrant = QdrantStore(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key,
+        collection=settings.event_push_expert_collection,
+    )
+    try:
+        await qdrant.connect()
+        llm = get_llm_client()
+        embedding = await llm.embed(interest)
+        await qdrant.upsert(
+            chunk_uid=f"expert_profile:{sub.uid}",
+            embedding=embedding,
+            text=interest,
+            metadata={
+                "user_id": sub.user_id,
+                "subscription_uid": sub.uid,
+                "sub_type": sub.sub_type,
+                "sub_target": sub.sub_target,
+            },
+        )
+        sub.embedding_synced = True
+        return True
+    except Exception:
+        logger.warning(
+            "Expert profile sync failed: sub=%s user=%s",
+            sub.uid,
+            sub.user_id,
+            exc_info=True,
+        )
+        sub.embedding_synced = False
+        return False
+    finally:
+        await qdrant.close()
+
+
+async def _delete_expert_profile(sub_uid: str) -> None:
+    """删除订阅对应的 expert_profiles 向量。"""
+    from aegi_core.infra.qdrant_store import QdrantStore
+    from aegi_core.settings import settings
+
+    qdrant = QdrantStore(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key,
+        collection=settings.event_push_expert_collection,
+    )
+    try:
+        await qdrant.connect()
+        await qdrant.delete(f"expert_profile:{sub_uid}")
+    except Exception:
+        logger.warning("Expert profile delete failed: sub=%s", sub_uid, exc_info=True)
+    finally:
+        await qdrant.close()
+
+
 # ── 端点 ─────────────────────────────────────────────────────
 
 
@@ -98,6 +166,10 @@ async def create_subscription(
     session.add(sub)
     await session.commit()
     await session.refresh(sub)
+    if (sub.interest_text or "").strip() and sub.enabled:
+        await _sync_expert_profile(sub)
+        await session.commit()
+        await session.refresh(sub)
     return _sub_to_response(sub)
 
 
@@ -169,6 +241,18 @@ async def patch_subscription(
 
     await session.commit()
     await session.refresh(sub)
+
+    interest = (sub.interest_text or "").strip()
+    if sub.enabled and interest:
+        await _sync_expert_profile(sub)
+        await session.commit()
+        await session.refresh(sub)
+    elif sub.embedding_synced:
+        await _delete_expert_profile(sub.uid)
+        sub.embedding_synced = False
+        await session.commit()
+        await session.refresh(sub)
+
     return _sub_to_response(sub)
 
 
@@ -184,6 +268,8 @@ async def delete_subscription(
     ).scalar_one_or_none()
     if not sub:
         raise AegiHTTPError(404, "not_found", f"Subscription {sub_uid} not found", {})
+    if sub.embedding_synced:
+        await _delete_expert_profile(sub.uid)
     await session.delete(sub)
     await session.commit()
     return {"status": "deleted"}

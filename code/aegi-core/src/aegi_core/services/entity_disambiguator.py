@@ -16,10 +16,17 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from aegi_core.contracts.audit import ActionV1, ToolTraceV1
+from aegi_core.db.models.entity_identity_action import EntityIdentityAction
 from aegi_core.services.entity import EntityV1
+from aegi_core.services.entity_identity_service import (
+    EntityIdentityActionCreate,
+    create_identity_action,
+    rollback_identity_action as rollback_identity_action_db,
+)
 
 if TYPE_CHECKING:
     from aegi_core.infra.llm_client import LLMClient
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 UNCERTAINTY_THRESHOLD = 0.7
 SIMILARITY_THRESHOLD = 0.82
@@ -219,3 +226,39 @@ async def disambiguate_entities(
         action=action,
         tool_trace=tool_trace,
     )
+
+
+async def record_merge_identity_action(
+    session: AsyncSession,
+    *,
+    case_uid: str,
+    merge_group: MergeGroup,
+    reason: str | None = None,
+    performed_by: str = "llm",
+    approved: bool = False,
+    approved_by: str | None = None,
+    created_by_action_uid: str | None = None,
+) -> EntityIdentityAction:
+    """为一次实体 merge 创建身份版本化 Action 记录。"""
+    return await create_identity_action(
+        session,
+        EntityIdentityActionCreate(
+            case_uid=case_uid,
+            action_type="merge",
+            entity_uids=[merge_group.canonical_uid, *merge_group.alias_uids],
+            result_entity_uid=merge_group.canonical_uid,
+            reason=reason or merge_group.explanation or "entity disambiguation merge",
+            performed_by=performed_by,
+            approved=approved,
+            approved_by=approved_by,
+            created_by_action_uid=created_by_action_uid,
+        ),
+    )
+
+
+async def rollback_identity_action(
+    session: AsyncSession,
+    action_uid: str,
+) -> EntityIdentityAction:
+    """回滚一次实体身份 merge/split Action。"""
+    return await rollback_identity_action_db(session, action_uid)

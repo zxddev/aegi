@@ -69,6 +69,18 @@ class TestHypothesesRoutes:
         assert "hypotheses" in data
         assert "trace_id" in data
 
+    async def test_generate_accepts_actor_id_only(self, client: AsyncClient) -> None:
+        case_uid = await _create_case(client, "hyp-cold-start")
+        resp = await client.post(
+            f"/cases/{case_uid}/hypotheses/generate",
+            json={"actor_id": "expert_alice"},
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["action_uid"].startswith("act_")
+        assert "hypotheses" in data
+        assert "trace_id" in data
+
 
 # ---------------------------------------------------------------------------
 # narratives

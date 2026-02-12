@@ -24,7 +24,10 @@ from aegi_core.infra.llm_client import LLMClient
 from aegi_core.services import ontology_versioning
 from aegi_core.services import graphrag_pipeline
 from aegi_core.services.entity import EntityV1
-from aegi_core.services.entity_disambiguator import disambiguate_entities
+from aegi_core.services.entity_disambiguator import (
+    disambiguate_entities,
+    record_merge_identity_action,
+)
 
 router = APIRouter(tags=["kg"])
 
@@ -54,6 +57,7 @@ async def build_from_assertions(
         ontology_version=body.ontology_version,
         llm=llm,
         neo4j=neo4j,
+        session=session,
     )
 
     if not result.ok:
@@ -142,7 +146,6 @@ async def disambiguate(
     case_uid: str,
     body: DisambiguateRequest,
     session: AsyncSession = Depends(get_db_session),
-    neo4j: Neo4jStore = Depends(get_neo4j_store),
     llm: LLMClient = Depends(get_llm_client),
 ) -> dict:
     result = await disambiguate_entities(
@@ -165,29 +168,25 @@ async def disambiguate(
     )
     await session.commit()
 
-    # 将非 uncertain 的 merge 组写入 Neo4j SAME_AS 关系
+    identity_action_uids: list[str] = []
+    # merge 先写入身份 Action；真正执行由审批端点触发。
     for group in result.merge_groups:
         if group.uncertain:
             continue
-        for alias_uid in group.alias_uids:
-            await neo4j.upsert_edges(
-                "Entity",
-                "Entity",
-                "SAME_AS",
-                [
-                    {
-                        "source_uid": group.canonical_uid,
-                        "target_uid": alias_uid,
-                        "properties": {
-                            "confidence": group.confidence,
-                            "explanation": group.explanation,
-                        },
-                    }
-                ],
-            )
+        identity_action = await record_merge_identity_action(
+            session,
+            case_uid=case_uid,
+            merge_group=group,
+            reason=f"disambiguation merge confidence={group.confidence}",
+            performed_by="llm",
+            approved=False,
+            created_by_action_uid=action_uid,
+        )
+        identity_action_uids.append(identity_action.uid)
 
     return {
         "merge_groups": [g.model_dump() for g in result.merge_groups],
         "unmatched_uids": result.unmatched_uids,
         "action_uid": action_uid,
+        "identity_action_uids": identity_action_uids,
     }

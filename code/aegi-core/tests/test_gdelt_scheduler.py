@@ -15,6 +15,7 @@ from aegi_core.services.gdelt_scheduler import GDELTScheduler
 async def test_scheduler_start_stop() -> None:
     monitor = AsyncMock()
     monitor.poll = AsyncMock(return_value=[])
+    monitor.poll_events = AsyncMock(return_value=[])
     scheduler = GDELTScheduler(
         monitor=monitor,
         interval_minutes=1,
@@ -39,6 +40,7 @@ async def test_scheduler_calls_poll() -> None:
 
     monitor = AsyncMock()
     monitor.poll = AsyncMock(side_effect=_poll)
+    monitor.poll_events = AsyncMock(return_value=[])
     scheduler = GDELTScheduler(
         monitor=monitor,
         interval_minutes=0.01,
@@ -51,6 +53,7 @@ async def test_scheduler_calls_poll() -> None:
     await scheduler.stop()
 
     assert monitor.poll.await_count >= 1
+    assert monitor.poll_events.await_count >= 1
 
 
 @pytest.mark.asyncio
@@ -68,6 +71,7 @@ async def test_scheduler_handles_poll_error() -> None:
 
     monitor = AsyncMock()
     monitor.poll = AsyncMock(side_effect=_poll)
+    monitor.poll_events = AsyncMock(return_value=[])
     scheduler = GDELTScheduler(
         monitor=monitor,
         interval_minutes=0.01,
@@ -86,6 +90,7 @@ async def test_scheduler_handles_poll_error() -> None:
 async def test_scheduler_disabled() -> None:
     monitor = AsyncMock()
     monitor.poll = AsyncMock(return_value=[])
+    monitor.poll_events = AsyncMock(return_value=[])
     scheduler = GDELTScheduler(
         monitor=monitor,
         interval_minutes=1,
@@ -96,6 +101,7 @@ async def test_scheduler_disabled() -> None:
     await scheduler.start()
     assert scheduler.is_running is False
     monitor.poll.assert_not_called()
+    monitor.poll_events.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -111,6 +117,7 @@ async def test_scheduler_api_status() -> None:
     app = create_app()
     monitor = AsyncMock()
     monitor.poll = AsyncMock(return_value=[])
+    monitor.poll_events = AsyncMock(return_value=[])
     scheduler = GDELTScheduler(
         monitor=monitor,
         interval_minutes=1,

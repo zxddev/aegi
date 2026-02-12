@@ -23,7 +23,7 @@ class AegiEvent:
     """不可变事件对象，在整个事件链中流转。"""
 
     event_type: str
-    case_uid: str
+    case_uid: str | None
     payload: dict[str, Any]
     entities: list[str] = field(default_factory=list)
     regions: list[str] = field(default_factory=list)

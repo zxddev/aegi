@@ -10,6 +10,7 @@ Evidence:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
@@ -124,9 +125,11 @@ class PipelineOrchestrator:
         self,
         llm: Any | None = None,
         neo4j_store: Any | None = None,
+        analysis_memory: Any | None = None,
     ) -> None:
         self._llm = llm
         self._neo4j = neo4j_store
+        self._analysis_memory = analysis_memory
 
     async def run_playbook(
         self,
@@ -214,6 +217,8 @@ class PipelineOrchestrator:
                 source_event_uid=f"pipeline:{case_uid}:{playbook_name}:{result.total_duration_ms}",
             )
         )
+
+        await self._maybe_record_analysis_memory(case_uid)
 
         return result
 
@@ -549,6 +554,7 @@ class PipelineOrchestrator:
         )
 
         result.total_duration_ms = _now_ms() - pipeline_start
+        await self._maybe_record_analysis_memory(case_uid)
         return result
 
     # ── LLM 对抗评估 ────────────────────────────────
@@ -826,6 +832,38 @@ class PipelineOrchestrator:
         if start_from is not None and start_from in STAGE_ORDER:
             return STAGE_ORDER[STAGE_ORDER.index(start_from) :]
         return list(STAGE_ORDER)
+
+    async def _maybe_record_analysis_memory(self, case_uid: str) -> None:
+        from aegi_core.settings import settings
+
+        if not settings.analysis_memory_enabled:
+            return
+        try:
+            if self._analysis_memory is not None:
+                await self._analysis_memory.record(case_uid)
+                return
+            if self._llm is None:
+                return
+            from aegi_core.api.deps import get_analysis_memory_qdrant_store
+            from aegi_core.db.session import ENGINE
+            from aegi_core.services.analysis_memory import AnalysisMemory
+            from sqlalchemy.ext.asyncio import AsyncSession
+
+            qdrant = get_analysis_memory_qdrant_store()
+            await qdrant.connect()
+            async with AsyncSession(ENGINE, expire_on_commit=False) as session:
+                memory = AnalysisMemory(
+                    db_session=session,
+                    qdrant=qdrant,
+                    llm=self._llm,
+                )
+                await memory.record(case_uid)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Analysis memory record failed: case=%s",
+                case_uid,
+                exc_info=True,
+            )
 
 
 def _ach_to_hypothesis(ach: hypothesis_engine.ACHResult, case_uid: str) -> HypothesisV1:

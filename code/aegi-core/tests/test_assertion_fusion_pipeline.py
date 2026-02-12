@@ -172,3 +172,51 @@ def test_fuse_preserves_conflicts_no_overwrite() -> None:
     for a in assertions:
         if "sc_preserve_a" in a.source_claim_uids:
             assert a.value.get("has_conflict") is True
+
+
+def test_fuse_outputs_ds_metadata_and_continuous_confidence() -> None:
+    """融合输出应包含 DS 元数据，confidence 应为连续值。"""
+    claim_a = _make_claim(
+        "sc_ds_meta_a",
+        "Exampleland confirmed deployment of warships.",
+        attributed_to="Exampleland",
+    )
+    claim_b = _make_claim(
+        "sc_ds_meta_b",
+        "Neighborstan expressed concern over naval movement.",
+        attributed_to="Neighborstan",
+    )
+
+    assertions, _, _, _ = fuse_claims([claim_a, claim_b], case_uid="case_ds_meta")
+
+    assert len(assertions) == 2
+    assert any(a.confidence not in {0.5, 0.9} for a in assertions)
+    for assertion in assertions:
+        assert assertion.confidence is not None
+        assert 0.0 <= assertion.confidence <= 1.0
+        assert "ds_belief" in assertion.value
+        assert "ds_plausibility" in assertion.value
+        assert "ds_uncertainty" in assertion.value
+        assert "ds_conflict_degree" in assertion.value
+        assert "source_count" in assertion.value
+
+
+def test_fuse_conflict_scenario_has_ds_conflict_degree() -> None:
+    """冲突场景下应输出 DS 冲突度。"""
+    claim_a = _make_claim(
+        "sc_ds_conflict_a",
+        "Exampleland confirmed the operation.",
+        attributed_to="Exampleland",
+    )
+    claim_b = _make_claim(
+        "sc_ds_conflict_b",
+        "Exampleland denied the operation.",
+        attributed_to="Exampleland",
+    )
+
+    assertions, _, _, _ = fuse_claims([claim_a, claim_b], case_uid="case_ds_conflict")
+
+    assert len(assertions) == 1
+    assertion = assertions[0]
+    assert assertion.value.get("has_conflict") is True
+    assert assertion.value.get("ds_conflict_degree", 0.0) > 0.0

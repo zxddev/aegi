@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -67,6 +67,54 @@ class AssertionV1(BaseModel):
     segment_ref: str | None = None
     media_time_range: MediaTimeRange | None = None
     created_at: datetime
+
+
+class AssertionFeedbackCreate(BaseModel):
+    """创建 Assertion 反馈。"""
+
+    user_id: str
+    verdict: Literal["agree", "disagree", "need_more_evidence", "partially_agree"]
+    confidence_override: float | None = Field(default=None, ge=0.0, le=1.0)
+    comment: str | None = Field(default=None, max_length=2000)
+    suggested_value: dict[str, Any] | None = None
+
+
+class AssertionFeedbackV1(BaseModel):
+    """Assertion 反馈响应体。"""
+
+    uid: str
+    assertion_uid: str
+    case_uid: str
+    user_id: str
+    verdict: str
+    confidence_override: float | None = None
+    comment: str | None = None
+    suggested_value: dict[str, Any] | None = None
+    created_at: datetime
+
+
+class AssertionFeedbackSummary(BaseModel):
+    """某个 Assertion 的反馈汇总。"""
+
+    assertion_uid: str
+    total_feedback: int
+    agree_count: int
+    disagree_count: int
+    need_more_evidence_count: int
+    partially_agree_count: int
+    avg_confidence_override: float | None = None
+    consensus: str
+
+
+class CaseFeedbackStats(BaseModel):
+    """某个 Case 的反馈统计。"""
+
+    case_uid: str
+    total_assertions: int
+    assertions_with_feedback: int
+    feedback_coverage: float
+    overall_agreement_rate: float | None = None
+    disputed_assertions: list[str] = Field(default_factory=list)
 
 
 class HypothesisV1(BaseModel):
