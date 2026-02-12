@@ -79,13 +79,32 @@ async def _maybe_await(value: Any) -> Any:
 class GDELTMonitor:
     """GDELT 轮询监控器。"""
 
-    def __init__(self, gdelt: GDELTClient, db_session: AsyncSession) -> None:
+    def __init__(
+        self,
+        gdelt: GDELTClient,
+        db_session: AsyncSession | None,
+    ) -> None:
         self._gdelt = gdelt
         self._db = db_session
 
     async def poll(self) -> list[GdeltEvent]:
+        """执行一次轮询，若未绑定 session 则内部临时创建。"""
+        if self._db is not None:
+            return await self._poll_once(self._db)
+
+        from aegi_core.db.session import ENGINE
+
+        async with AsyncSession(ENGINE, expire_on_commit=False) as session:
+            return await self._poll_once(session)
+
+    def _require_db_session(self) -> AsyncSession:
+        if self._db is None:
+            raise RuntimeError("GDELTMonitor requires a bound db session")
+        return self._db
+
+    async def _poll_once(self, db: AsyncSession) -> list[GdeltEvent]:
         """执行一次轮询：加载订阅 → 搜索 → 去重 → 入库 → emit 事件。"""
-        subs = await self._load_subscriptions()
+        subs = await self._load_subscriptions(db)
         if not subs:
             logger.info("GDELT poll: 无匹配订阅，跳过")
             return []
@@ -151,7 +170,7 @@ class GDELTMonitor:
             # DB 去重
             existing = await _maybe_await(
                 (
-                    await self._db.execute(
+                    await db.execute(
                         select(GdeltEvent.uid).where(GdeltEvent.gdelt_id == gid)
                     )
                 ).scalar_one_or_none()
@@ -181,11 +200,11 @@ class GDELTMonitor:
                     "domain_country": article.domain_country,
                 },
             )
-            await _maybe_await(self._db.add(event))
+            await _maybe_await(db.add(event))
             new_events.append(event)
 
         if new_events:
-            await self._db.commit()
+            await db.commit()
             # emit 事件
             bus = get_event_bus()
             for ev in new_events:
@@ -214,6 +233,8 @@ class GDELTMonitor:
         from aegi_core.db.models.evidence import Evidence
         from aegi_core.db.models.source_claim import SourceClaim
 
+        db = self._require_db_session()
+
         try:
             raw_text = f"{event.title}\n{event.url}".strip()
             content_sha = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
@@ -225,7 +246,7 @@ class GDELTMonitor:
             source_claim_uid = uuid4().hex
 
             await _maybe_await(
-                self._db.add(
+                db.add(
                     ArtifactIdentity(
                         uid=artifact_identity_uid,
                         kind="url",
@@ -234,7 +255,7 @@ class GDELTMonitor:
                 )
             )
             await _maybe_await(
-                self._db.add(
+                db.add(
                     ArtifactVersion(
                         uid=artifact_version_uid,
                         artifact_identity_uid=artifact_identity_uid,
@@ -253,7 +274,7 @@ class GDELTMonitor:
                 )
             )
             await _maybe_await(
-                self._db.add(
+                db.add(
                     Chunk(
                         uid=chunk_uid,
                         artifact_version_uid=artifact_version_uid,
@@ -267,7 +288,7 @@ class GDELTMonitor:
                 )
             )
             await _maybe_await(
-                self._db.add(
+                db.add(
                     Evidence(
                         uid=evidence_uid,
                         case_uid=case_uid,
@@ -278,7 +299,7 @@ class GDELTMonitor:
                 )
             )
             await _maybe_await(
-                self._db.add(
+                db.add(
                     SourceClaim(
                         uid=source_claim_uid,
                         case_uid=case_uid,
@@ -295,11 +316,11 @@ class GDELTMonitor:
                     )
                 )
             )
-            await _maybe_await(self._db.flush())
+            await _maybe_await(db.flush())
 
             event.case_uid = case_uid
             event.status = "ingested"
-            await self._db.commit()
+            await db.commit()
 
             bus = get_event_bus()
             await bus.emit(
@@ -321,16 +342,16 @@ class GDELTMonitor:
         except Exception as exc:
             logger.exception("GDELT ingest 失败: %s", exc)
             try:
-                await self._db.rollback()
+                await db.rollback()
             except Exception:
                 logger.exception("GDELT ingest 回滚失败")
             event.status = "error"
-            await self._db.commit()
+            await db.commit()
             raise
 
-    async def _load_subscriptions(self) -> list[Subscription]:
+    async def _load_subscriptions(self, db: AsyncSession) -> list[Subscription]:
         """加载启用的、匹配 GDELT 事件类型的订阅。"""
-        result = await self._db.execute(
+        result = await db.execute(
             select(Subscription).where(Subscription.enabled.is_(True))
         )
         scalars = await _maybe_await(result.scalars())

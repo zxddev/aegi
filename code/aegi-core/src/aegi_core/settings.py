@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     # GDELT 数据源
     gdelt_proxy: str = "http://127.0.0.1:7890"
     gdelt_poll_interval_minutes: int = 15
+    gdelt_scheduler_enabled: bool = False
     gdelt_max_articles_per_query: int = 50
     gdelt_auto_ingest: bool = False
     gdelt_anomaly_goldstein_threshold: float = -7.0

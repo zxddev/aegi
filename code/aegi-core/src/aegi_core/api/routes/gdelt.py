@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aegi_core.api.deps import get_db_session, get_gdelt_client
 from aegi_core.api.errors import AegiHTTPError
 from aegi_core.db.models.gdelt_event import GdeltEvent
+from aegi_core.services.gdelt_scheduler import GDELTScheduler
 
 router = APIRouter(prefix="/gdelt", tags=["gdelt"])
 
@@ -47,6 +48,16 @@ class PaginatedGdeltEvents(BaseModel):
 class PollResponse(BaseModel):
     new_events: int
     events: list[GdeltEventResponse]
+
+
+class SchedulerStatusResponse(BaseModel):
+    state: str
+    running: bool
+    enabled: bool
+    interval_minutes: float
+    last_poll_time: str | None = None
+    last_successful_poll_time: str | None = None
+    next_poll_time: str | None = None
 
 
 class IngestRequest(BaseModel):
@@ -86,6 +97,36 @@ def _event_to_response(ev: GdeltEvent) -> GdeltEventResponse:
     )
 
 
+def _get_scheduler(request: Request) -> GDELTScheduler:
+    scheduler = getattr(request.app.state, "gdelt_scheduler", None)
+    if scheduler is None:
+        raise AegiHTTPError(
+            503,
+            "service_unavailable",
+            "GDELT scheduler not initialized",
+            {},
+        )
+    return scheduler
+
+
+def _scheduler_to_response(scheduler: GDELTScheduler) -> SchedulerStatusResponse:
+    return SchedulerStatusResponse(
+        state="running" if scheduler.is_running else "stopped",
+        running=scheduler.is_running,
+        enabled=scheduler.enabled,
+        interval_minutes=scheduler.interval_minutes,
+        last_poll_time=scheduler.last_poll_time.isoformat()
+        if scheduler.last_poll_time
+        else None,
+        last_successful_poll_time=scheduler.last_successful_poll_time.isoformat()
+        if scheduler.last_successful_poll_time
+        else None,
+        next_poll_time=scheduler.next_poll_time.isoformat()
+        if scheduler.next_poll_time
+        else None,
+    )
+
+
 # ── 端点 ──────────────────────────────────────────────────────
 
 
@@ -103,6 +144,29 @@ async def manual_poll(
         new_events=len(new_events),
         events=[_event_to_response(ev) for ev in new_events],
     )
+
+
+@router.post("/monitor/start", response_model=SchedulerStatusResponse)
+async def start_scheduler(request: Request) -> SchedulerStatusResponse:
+    """运行时启动 GDELT 调度器。"""
+    scheduler = _get_scheduler(request)
+    await scheduler.start()
+    return _scheduler_to_response(scheduler)
+
+
+@router.post("/monitor/stop", response_model=SchedulerStatusResponse)
+async def stop_scheduler(request: Request) -> SchedulerStatusResponse:
+    """运行时停止 GDELT 调度器。"""
+    scheduler = _get_scheduler(request)
+    await scheduler.stop()
+    return _scheduler_to_response(scheduler)
+
+
+@router.get("/monitor/status", response_model=SchedulerStatusResponse)
+async def scheduler_status(request: Request) -> SchedulerStatusResponse:
+    """查询 GDELT 调度器状态。"""
+    scheduler = _get_scheduler(request)
+    return _scheduler_to_response(scheduler)
 
 
 @router.get("/events", response_model=PaginatedGdeltEvents)

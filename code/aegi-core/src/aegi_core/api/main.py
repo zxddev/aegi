@@ -137,12 +137,33 @@ def create_app() -> FastAPI:
             bayesian_handler = create_bayesian_update_handler(llm=_llm)
             bus.on("claim.extracted", bayesian_handler)
 
+        # ── 初始化 GDELT 调度器并挂载到 app.state ──
+        from aegi_core.api.deps import get_gdelt_client
+        from aegi_core.services.gdelt_monitor import GDELTMonitor
+        from aegi_core.services.gdelt_scheduler import GDELTScheduler
+
+        gdelt_client = get_gdelt_client()
+        gdelt_monitor = GDELTMonitor(gdelt=gdelt_client, db_session=None)
+        gdelt_scheduler = GDELTScheduler(
+            monitor=gdelt_monitor,
+            interval_minutes=settings.gdelt_poll_interval_minutes,
+            enabled=True,
+        )
+        app.state.gdelt_scheduler = gdelt_scheduler
+        if settings.gdelt_scheduler_enabled:
+            await gdelt_scheduler.start()
+
         yield
         # 关闭
+        gdelt_scheduler = getattr(app.state, "gdelt_scheduler", None)
+        if gdelt_scheduler:
+            await gdelt_scheduler.stop()
+
         # ── 优雅关闭：排空事件总线 ──
         bus = get_event_bus()
         await bus.drain()
 
+        await gdelt_client.close()
         if expert_qdrant:
             await expert_qdrant.close()
         if gateway:
